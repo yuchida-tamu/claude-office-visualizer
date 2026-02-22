@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Rules
 
-- **Commit after every meaningful chunk of changes.** After completing a logical unit of work (a bug fix, a new feature, a refactor, a documentation update), create a git commit immediately so changes can be reverted if necessary. Do not accumulate large uncommitted diffs.
+- **Follow Test-Driven Development (TDD).** For every feature implementation or bug fix, start by writing a failing unit test that specifies the desired behavior. Then write the minimum code to make it pass. Then refactor. Red → Green → Refactor. Do not skip the red step.
 
 ## Commands
 
@@ -25,7 +25,7 @@ cd server && npx tsc --noEmit   # Server only
 bun run build               # Builds shared → client (Vite)
 ```
 
-No test framework or linter is currently configured.
+No linter is currently configured. Tests use Bun's built-in test runner (`bun test` from `server/`).
 
 ## Architecture
 

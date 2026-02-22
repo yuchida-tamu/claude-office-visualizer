@@ -613,10 +613,11 @@ describe('useVisualizerStore', () => {
       expect(msgs[0].contentPreview.length).toBe(100);
     });
 
-    test('does not create message if no root agent exists', () => {
-      // No session started — rootAgentId is null
+    test('auto-creates root agent and creates message when no root agent exists', () => {
+      // No session started — rootAgentId is null, but ensureAgentExists creates one
       processEvent(makeUserPrompt());
-      expect(getState().activeMessages.length).toBe(0);
+      expect(getState().activeMessages.length).toBe(1);
+      expect(getState().agents.has(SESSION_ID)).toBe(true);
     });
   });
 
@@ -635,10 +636,11 @@ describe('useVisualizerStore', () => {
       expect(agent.activeToolCall).toBeNull();
     });
 
-    test('no-ops for unknown session_id', () => {
+    test('auto-creates agent for unknown session_id', () => {
       processEvent(makeWaitingForUser({ session_id: 'unknown' }));
-      // No crash, no new agent created
-      expect(getState().agents.size).toBe(0);
+      // Agent is auto-created and set to waiting
+      expect(getState().agents.size).toBe(1);
+      expect(getState().agents.get('unknown')!.status).toBe('waiting');
     });
   });
 
@@ -672,10 +674,11 @@ describe('useVisualizerStore', () => {
       expect(agent.status).toBe('completed');
     });
 
-    test('no-ops if root agent does not exist', () => {
-      // No root session started
-      processEvent(makeSessionEnded());
-      expect(getState().agents.size).toBe(0);
+    test('auto-creates root agent if it does not exist', () => {
+      // No root session started — ensureAgentExists creates one
+      processEvent(makeSessionEnded({ reason: 'stop' }));
+      expect(getState().agents.size).toBe(1);
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('waiting');
     });
 
     test('clears activeToolCall on root agent', () => {
@@ -1131,14 +1134,16 @@ describe('useVisualizerStore', () => {
       expect(getState().activeToolCalls.size).toBe(0);
     });
 
-    test('WaitingForUser on non-existent session does not create agent', () => {
+    test('WaitingForUser on non-existent session auto-creates agent', () => {
       processEvent(makeWaitingForUser({ session_id: 'nonexistent' }));
-      expect(getState().agents.size).toBe(0);
+      expect(getState().agents.size).toBe(1);
+      expect(getState().agents.get('nonexistent')!.status).toBe('waiting');
     });
 
-    test('SessionEnded with no rootAgentId set is a no-op', () => {
-      processEvent(makeSessionEnded());
-      expect(getState().agents.size).toBe(0);
+    test('SessionEnded with no rootAgentId set auto-creates agent', () => {
+      processEvent(makeSessionEnded({ reason: 'stop' }));
+      expect(getState().agents.size).toBe(1);
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('waiting');
     });
 
     test('MessageSent creates in-flight message even without agents in store', () => {
@@ -1269,6 +1274,108 @@ describe('useVisualizerStore', () => {
       const agent = getState().agents.get(SESSION_ID)!;
       expect(agent.notificationMessage).toBeNull();
       expect(agent.notificationType).toBeNull();
+    });
+  });
+
+  // =========================================================================
+  // Auto-create root agent when SessionStarted is missed
+  // =========================================================================
+
+  describe('auto-create root agent when SessionStarted is missed', () => {
+    test('ToolCallStarted with unknown session_id auto-creates a root agent', () => {
+      // No SessionStarted — server started after session began
+      processEvent(makeToolCallStarted({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.id).toBe(SESSION_ID);
+      expect(agent!.parentId).toBeNull();
+      expect(agent!.status).toBe('tool_executing');
+      expect(agent!.agentType).toBe('unknown');
+      expect(agent!.model).toBe('unknown');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('ToolCallCompleted with unknown session_id auto-creates a root agent', () => {
+      processEvent(makeToolCallCompleted({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('active');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('ToolCallFailed with unknown session_id auto-creates a root agent', () => {
+      processEvent(makeToolCallFailed({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('error');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('WaitingForUser with unknown session_id auto-creates a root agent', () => {
+      processEvent(makeWaitingForUser({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('waiting');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('SessionEnded with unknown session_id auto-creates a root agent', () => {
+      processEvent(makeSessionEnded({ session_id: SESSION_ID, reason: 'stop' }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('waiting');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('UserPrompt with unknown session_id auto-creates a root agent', () => {
+      processEvent(makeUserPrompt({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID);
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('active');
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+    });
+
+    test('auto-created root agent has correct default fields', () => {
+      processEvent(makeToolCallStarted({ session_id: SESSION_ID }));
+
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.children).toEqual([]);
+      expect(agent.taskDescription).toBeNull();
+      expect(agent.activeToolCall).not.toBeNull(); // set by ToolCallStarted
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('does not re-create agent if it already exists', () => {
+      setupRootSession();
+      const originalAgent = getState().agents.get(SESSION_ID)!;
+      expect(originalAgent.agentType).toBe('main');
+
+      processEvent(makeToolCallStarted({ session_id: SESSION_ID }));
+
+      // Should keep the original agent type, not overwrite with 'unknown'
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.agentType).toBe('main');
+    });
+
+    test('subsequent events work correctly after auto-creation', () => {
+      // Auto-create via ToolCallStarted
+      processEvent(makeToolCallStarted({ session_id: SESSION_ID }));
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('tool_executing');
+
+      // ToolCallCompleted should transition to active
+      processEvent(makeToolCallCompleted({ session_id: SESSION_ID }));
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('active');
+
+      // WaitingForUser should transition to waiting
+      processEvent(makeWaitingForUser({ session_id: SESSION_ID }));
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('waiting');
     });
   });
 

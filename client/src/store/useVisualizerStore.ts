@@ -540,7 +540,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         newToolCalls.set(event.tool_use_id, toolCall);
 
         // Update agent status — tool events use session_id as agent identifier
-        const newAgents = new Map(state.agents);
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
         const agent = newAgents.get(event.session_id);
         if (agent) {
           newAgents.set(event.session_id, {
@@ -560,7 +560,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const newToolCalls = new Map(state.activeToolCalls);
         newToolCalls.delete(event.tool_use_id);
 
-        const newAgents = new Map(state.agents);
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
         const agent = newAgents.get(event.session_id);
         if (agent) {
           newAgents.set(event.session_id, {
@@ -580,7 +580,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const newToolCalls = new Map(state.activeToolCalls);
         newToolCalls.delete(event.tool_use_id);
 
-        const newAgents = new Map(state.agents);
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
         const agent = newAgents.get(event.session_id);
         if (agent) {
           newAgents.set(event.session_id, { ...agent, status: 'error', activeToolCall: null, notificationMessage: null, notificationType: null });
@@ -623,7 +623,13 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       }
 
       case 'UserPrompt': {
-        const rootId = state.rootAgentId;
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
+        // Persist agents if a new one was created
+        if (newAgents !== state.agents) {
+          set({ agents: newAgents });
+        }
+        // Re-read rootAgentId — ensureAgentExists may have set it
+        const rootId = get().rootAgentId;
         if (rootId) {
           const MESSAGE_DURATION = 600;
           const msg: MessageInFlight = {
@@ -642,7 +648,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       }
 
       case 'WaitingForUser': {
-        const newAgents = new Map(state.agents);
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
         const agent = newAgents.get(event.session_id);
         if (agent) {
           newAgents.set(event.session_id, {
@@ -658,12 +664,14 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       }
 
       case 'SessionEnded': {
-        const newAgents = new Map(state.agents);
-        const root = state.rootAgentId ? newAgents.get(state.rootAgentId) : undefined;
-        if (root && state.rootAgentId) {
+        const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
+        // Re-read rootAgentId — ensureAgentExists may have set it
+        const currentRootId = get().rootAgentId;
+        const root = currentRootId ? newAgents.get(currentRootId) : undefined;
+        if (root && currentRootId) {
           // "stop" fires between turns — agent is waiting for user, not finished
           const newStatus = event.reason === 'stop' ? 'waiting' : 'completed';
-          newAgents.set(state.rootAgentId, { ...root, status: newStatus, activeToolCall: null, notificationMessage: null, notificationType: null });
+          newAgents.set(currentRootId, { ...root, status: newStatus, activeToolCall: null, notificationMessage: null, notificationType: null });
           set({ agents: newAgents });
         }
         break;
@@ -766,6 +774,39 @@ if (import.meta.env.DEV) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Auto-create a root agent when an event references a session_id not in the
+ * agents map. This handles the case where the visualizer server starts after a
+ * Claude Code session has already begun, so SessionStarted was missed.
+ */
+function ensureAgentExists(
+  agents: Map<string, AgentNode>,
+  sessionId: string,
+  set: (partial: Partial<VisualizerState>) => void,
+  rootAgentId: string | null,
+): Map<string, AgentNode> {
+  if (agents.has(sessionId)) return agents;
+  const newAgents = new Map(agents);
+  newAgents.set(sessionId, {
+    id: sessionId,
+    parentId: null,
+    children: [],
+    status: 'active',
+    agentType: 'unknown',
+    model: 'unknown',
+    taskDescription: null,
+    position: { x: 0, y: 0, z: 0 },
+    activeToolCall: null,
+    notificationMessage: null,
+    notificationType: null,
+  });
+  // Set as root if no root exists yet
+  if (!rootAgentId) {
+    set({ rootAgentId: sessionId, currentSessionId: sessionId });
+  }
+  return newAgents;
+}
 
 function extractAgentId(event: VisualizerEvent): string | null {
   switch (event.type) {

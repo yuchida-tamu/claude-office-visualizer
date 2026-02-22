@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Follow Test-Driven Development (TDD).** For every feature implementation or bug fix, start by writing a failing unit test that specifies the desired behavior. Then write the minimum code to make it pass. Then refactor. Red → Green → Refactor. Do not skip the red step.
 
+- **Diagram-Driven Design.** Before starting TDD, design the data-flow or user-flow of the feature/change as a Mermaid diagram under `.memory/data-flow/`. This makes the design concrete before any code is written. The full workflow is: **Diagram → Red → Green → Refactor → Finalize Diagram**.
+  - **New feature**: Create a new diagram file (e.g., `.memory/data-flow/feature-name.md`).
+  - **Modifying an existing feature**: Look for an existing diagram first. If one exists, update it. If not, create a new one.
+  - **After implementation**: Finalize the diagram to reflect any deviations from the original design that emerged during implementation.
+  - **Always load diagrams as context**: The `.memory/data-flow/` directory should be read at the start of work to understand the current system. The main `data-flow.md` contains the end-to-end system overview; feature-specific files cover individual features in detail.
+
 ## Commands
 
 ```bash

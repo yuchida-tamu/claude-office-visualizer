@@ -309,6 +309,102 @@ describe('validateEvent', () => {
       expect(result.error).toBe('Missing or invalid "session_id" field');
       expect(event).toBeNull();
     });
+
+    test('rejects when id is a boolean', () => {
+      const body = makeEvent('SessionStarted', { id: true });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "id" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when id is an object', () => {
+      const body = makeEvent('SessionStarted', { id: { value: 'abc' } });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "id" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when id is null', () => {
+      const body = makeEvent('SessionStarted', { id: null });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "id" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when type is a number', () => {
+      const body = { ...baseFields(), type: 42 };
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "type" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when type is a boolean', () => {
+      const body = { ...baseFields(), type: false };
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "type" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when type is null', () => {
+      const body = { ...baseFields(), type: null };
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "type" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when type is an object', () => {
+      const body = { ...baseFields(), type: { name: 'SessionStarted' } };
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "type" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when timestamp is a boolean', () => {
+      const body = makeEvent('SessionStarted', { timestamp: true });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "timestamp" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when timestamp is null', () => {
+      const body = makeEvent('SessionStarted', { timestamp: null });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "timestamp" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when timestamp is an object', () => {
+      const body = makeEvent('SessionStarted', { timestamp: { iso: '2026-01-01' } });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "timestamp" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when session_id is a boolean', () => {
+      const body = makeEvent('SessionStarted', { session_id: true });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "session_id" field');
+      expect(event).toBeNull();
+    });
+
+    test('rejects when session_id is an object', () => {
+      const body = makeEvent('SessionStarted', { session_id: { uuid: 'abc' } });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Missing or invalid "session_id" field');
+      expect(event).toBeNull();
+    });
   });
 
   // ---- Validation order ----

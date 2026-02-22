@@ -41,6 +41,7 @@ export function getEventById(db: Database, id: string): unknown | null {
 export interface EventQueryFilters {
   session_id?: string;
   type?: string;
+  fromTimestamp?: string;
   limit?: number;
   offset?: number;
   latest?: boolean;
@@ -57,6 +58,10 @@ export function getEvents(db: Database, filters: EventQueryFilters = {}): unknow
   if (filters.type) {
     conditions.push('type = ?');
     params.push(filters.type);
+  }
+  if (filters.fromTimestamp) {
+    conditions.push('timestamp >= ?');
+    params.push(filters.fromTimestamp);
   }
 
   const limit = filters.limit ?? 100;

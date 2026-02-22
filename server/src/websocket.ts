@@ -37,19 +37,9 @@ export function createWebSocketHandler(db: Database): WebSocketHandler {
             const history: ServerMessage = { type: 'history', data: events as never[] };
             ws.sendText(JSON.stringify(history));
           } else if (msg.type === 'replay') {
-            // Replay events from a given timestamp
-            const conditions: string[] = [];
-            const params: (string | number)[] = [];
-            conditions.push('timestamp >= ?');
-            params.push(msg.fromTimestamp);
-
-            let sql = 'SELECT payload FROM events WHERE ' + conditions.join(' AND ');
-            sql += ' ORDER BY timestamp ASC LIMIT 1000';
-
-            const stmt = db.prepare(sql);
-            const rows = stmt.all(...params) as { payload: string }[];
-            const events = rows.map((r) => JSON.parse(r.payload));
-            const history: ServerMessage = { type: 'history', data: events };
+            // Replay events from a given timestamp using the centralized query builder
+            const events = getEvents(db, { fromTimestamp: msg.fromTimestamp, limit: 1000 });
+            const history: ServerMessage = { type: 'history', data: events as never[] };
             ws.sendText(JSON.stringify(history));
           }
         } catch {

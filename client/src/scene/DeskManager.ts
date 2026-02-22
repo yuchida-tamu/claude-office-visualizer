@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { AgentStatus } from '@shared/agent';
+import { SlotBasedLayout } from './SlotBasedLayout';
 
 // ---------------------------------------------------------------------------
 // Status indicator colors
@@ -14,136 +15,6 @@ const STATUS_COLORS: Record<AgentStatus, number> = {
   completed: 0x9ca3af,
   spawning: 0x4ade80,
 };
-
-// ---------------------------------------------------------------------------
-// Force-directed layout helpers
-// ---------------------------------------------------------------------------
-
-interface LayoutNode {
-  id: string;
-  parentId: string | null;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-}
-
-class ForceDirectedLayout {
-  private nodes = new Map<string, LayoutNode>();
-  private settled = true;
-
-  private static readonly SPRING_REST = 3;
-  private static readonly SPRING_K = 0.3;
-  private static readonly REPULSION = 2;
-  private static readonly CENTER_GRAVITY = 0.02;
-  private static readonly DAMPING = 0.9;
-  private static readonly SETTLE_THRESHOLD = 0.01;
-
-  addNode(id: string, parentId: string | null): THREE.Vector3 {
-    const parentNode = parentId ? this.nodes.get(parentId) : null;
-
-    let startPos: THREE.Vector3;
-    if (parentNode) {
-      // Count existing children of this parent for angular placement
-      let siblingIndex = 0;
-      for (const node of this.nodes.values()) {
-        if (node.parentId === parentId) siblingIndex++;
-      }
-      // Golden angle (~137.5°) ensures even distribution regardless of child count
-      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-      const angle = siblingIndex * goldenAngle;
-      const distance = ForceDirectedLayout.SPRING_REST;
-      startPos = parentNode.position.clone().add(
-        new THREE.Vector3(
-          Math.cos(angle) * distance,
-          0,
-          Math.sin(angle) * distance,
-        ),
-      );
-    } else {
-      startPos = new THREE.Vector3(0, 0, 0);
-    }
-
-    const node: LayoutNode = {
-      id,
-      parentId,
-      position: startPos,
-      velocity: new THREE.Vector3(),
-    };
-    this.nodes.set(id, node);
-    this.settled = false;
-    return startPos;
-  }
-
-  removeNode(id: string): void {
-    this.nodes.delete(id);
-    this.settled = false;
-  }
-
-  getPosition(id: string): THREE.Vector3 | null {
-    return this.nodes.get(id)?.position ?? null;
-  }
-
-  isSettled(): boolean {
-    return this.settled;
-  }
-
-  update(dt: number): void {
-    if (this.settled) return;
-
-    const cappedDt = Math.min(dt, 0.05); // Cap for stability
-    const force = new THREE.Vector3();
-    let maxVelocity = 0;
-
-    for (const node of this.nodes.values()) {
-      force.set(0, 0, 0);
-
-      // Spring force toward parent
-      if (node.parentId) {
-        const parent = this.nodes.get(node.parentId);
-        if (parent) {
-          const diff = new THREE.Vector3().subVectors(parent.position, node.position);
-          diff.y = 0; // Keep on XZ plane
-          const dist = diff.length();
-          if (dist > 0) {
-            const springForce = (dist - ForceDirectedLayout.SPRING_REST) * ForceDirectedLayout.SPRING_K;
-            force.add(diff.normalize().multiplyScalar(springForce));
-          }
-        }
-      }
-
-      // Repulsion from all other nodes
-      for (const other of this.nodes.values()) {
-        if (other.id === node.id) continue;
-        const diff = new THREE.Vector3().subVectors(node.position, other.position);
-        diff.y = 0;
-        const dist = diff.length();
-        if (dist > 0 && dist < 8) {
-          const repForce = ForceDirectedLayout.REPULSION / (dist * dist);
-          force.add(diff.normalize().multiplyScalar(repForce));
-        }
-      }
-
-      // Center gravity
-      const toCenter = new THREE.Vector3().subVectors(
-        new THREE.Vector3(0, 0, 0),
-        node.position,
-      );
-      toCenter.y = 0;
-      force.add(toCenter.multiplyScalar(ForceDirectedLayout.CENTER_GRAVITY));
-
-      // Apply forces
-      node.velocity.add(force.multiplyScalar(cappedDt));
-      node.velocity.multiplyScalar(ForceDirectedLayout.DAMPING);
-      node.velocity.y = 0; // Constrain to XZ plane
-
-      node.position.add(node.velocity.clone().multiplyScalar(cappedDt));
-      node.position.y = 0; // Keep on floor level
-
-      maxVelocity = Math.max(maxVelocity, node.velocity.length());
-    }
-
-    this.settled = maxVelocity < ForceDirectedLayout.SETTLE_THRESHOLD;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Desk instance
@@ -176,7 +47,7 @@ interface DeskInstance {
 export class DeskManager {
   private scene: THREE.Scene;
   private desks = new Map<string, DeskInstance>();
-  private layoutEngine = new ForceDirectedLayout();
+  private layoutEngine = new SlotBasedLayout();
   private clock = new THREE.Clock();
 
   // Shared geometries — created once, reused per desk
@@ -219,7 +90,7 @@ export class DeskManager {
     }
     console.warn('[DeskMgr] addDesk: creating new desk for', agentId);
 
-    const pos = this.layoutEngine.addNode(agentId, parentId ?? null);
+    const pos = this.layoutEngine.addNode(agentId);
     const group = this.buildDeskGroup(agentId);
     group.position.copy(pos);
     group.scale.set(0, 0, 0); // Start at 0 for spawn animation
@@ -316,9 +187,6 @@ export class DeskManager {
 
   /** Called each frame. */
   update(deltaTime: number): void {
-    // Update force-directed layout
-    this.layoutEngine.update(deltaTime);
-
     const time = this.clock.getElapsedTime();
 
     for (const [agentId, desk] of this.desks.entries()) {

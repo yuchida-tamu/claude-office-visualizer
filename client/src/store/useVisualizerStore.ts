@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { VisualizerEvent } from '@shared/events';
-import type { AgentNode, AgentStatus, ActiveToolCall, Position3D } from '@shared/agent';
+import type { AgentNode, AgentStatus, ActiveToolCall } from '@shared/agent';
 import type { ServerMessage, ClientSubscribeMessage } from '@shared/messages';
 
 // ---------------------------------------------------------------------------
@@ -98,21 +98,6 @@ function clearTimers() {
     cancelAnimationFrame(bufferRafId);
     bufferRafId = null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Position helpers
-// ---------------------------------------------------------------------------
-
-const DESK_SPACING = 4;
-
-function calculateChildPosition(parentPos: Position3D, childIndex: number): Position3D {
-  const angle = (childIndex * Math.PI * 2) / Math.max(childIndex + 1, 3);
-  return {
-    x: parentPos.x + Math.cos(angle) * DESK_SPACING,
-    y: 0,
-    z: parentPos.z + Math.sin(angle) * DESK_SPACING,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -406,8 +391,6 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         // parent_session_id separately.
         const parentId = event.parent_session_id ?? event.session_id;
         const parent = newAgents.get(parentId);
-        const parentPos: Position3D = parent?.position ?? { x: 0, y: 0, z: 0 };
-        const childIndex = parent ? parent.children.length : 0;
 
         const newAgent: AgentNode = {
           id: event.agent_id,
@@ -417,7 +400,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           agentType: event.agent_type,
           model: event.model,
           taskDescription: event.task_description,
-          position: calculateChildPosition(parentPos, childIndex),
+          position: { x: 0, y: 0, z: 0 },
           activeToolCall: null,
         };
         newAgents.set(event.agent_id, newAgent);

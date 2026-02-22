@@ -221,6 +221,26 @@ describe('getEvents', () => {
     const events = getEvents(db, { session_id: 'nonexistent' });
     expect(events).toHaveLength(0);
   });
+
+  test('filters by fromTimestamp (inclusive)', () => {
+    const events = getEvents(db, { fromTimestamp: '2025-01-01T00:00:03.000Z' }) as Array<{ id: string }>;
+    expect(events).toHaveLength(3);
+    expect(events[0].id).toBe('e3');
+    expect(events[1].id).toBe('e4');
+    expect(events[2].id).toBe('e5');
+  });
+
+  test('fromTimestamp combined with other filters', () => {
+    const events = getEvents(db, { fromTimestamp: '2025-01-01T00:00:02.000Z', session_id: 'sess-A' }) as Array<{ id: string }>;
+    expect(events).toHaveLength(2);
+    expect(events[0].id).toBe('e2');
+    expect(events[1].id).toBe('e4');
+  });
+
+  test('fromTimestamp with future date returns empty', () => {
+    const events = getEvents(db, { fromTimestamp: '2099-01-01T00:00:00.000Z' });
+    expect(events).toHaveLength(0);
+  });
 });
 
 describe('getEventsBySession', () => {

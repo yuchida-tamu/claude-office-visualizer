@@ -318,6 +318,16 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       // irrelevant after history replay (no one saw the live completion).
       if (agent.status === 'completed') {
         newAgents.delete(id);
+        // Remove from parent's children array
+        if (agent.parentId) {
+          const parent = newAgents.get(agent.parentId);
+          if (parent) {
+            newAgents.set(agent.parentId, {
+              ...parent,
+              children: parent.children.filter((c) => c !== id),
+            });
+          }
+        }
         changed = true;
         continue;
       }

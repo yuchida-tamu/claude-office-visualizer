@@ -787,6 +787,24 @@ describe('useVisualizerStore', () => {
       expect(getState().agents.has(AGENT_ID)).toBe(false);
     });
 
+    test('removes completed sub-agent from parent children array', () => {
+      setupRootSession();
+      processEvent(makeAgentSpawned({ agent_id: AGENT_ID }), Date.now());
+      processEvent(makeAgentSpawned({ agent_id: AGENT_ID_2 }), Date.now());
+      processEvent(makeAgentCompleted({ agent_id: AGENT_ID }), Date.now());
+
+      const parentBefore = getState().agents.get(SESSION_ID)!;
+      expect(parentBefore.children).toContain(AGENT_ID);
+      expect(parentBefore.children).toContain(AGENT_ID_2);
+
+      getState().cleanupStaleAgents();
+
+      const parentAfter = getState().agents.get(SESSION_ID)!;
+      expect(parentAfter.children).not.toContain(AGENT_ID);
+      // AGENT_ID_2 is still active, should remain
+      expect(parentAfter.children).toContain(AGENT_ID_2);
+    });
+
     test('never removes the root agent even if completed', () => {
       setupRootSession();
       processEvent(makeSessionEnded({ reason: 'normal' }));

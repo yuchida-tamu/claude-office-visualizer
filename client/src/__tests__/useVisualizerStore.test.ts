@@ -1236,7 +1236,7 @@ describe('useVisualizerStore', () => {
       expect(agent.notificationType).toBeNull();
     });
 
-    test('SessionEnded with reason "stop" clears notification fields', () => {
+    test('SessionEnded with reason "stop" preserves notification fields', () => {
       setupRootSession();
       processEvent(makeWaitingForUser({
         notification_type: 'permission_request',
@@ -1246,6 +1246,21 @@ describe('useVisualizerStore', () => {
       processEvent(makeSessionEnded({ reason: 'stop' }));
       const agent = getState().agents.get(SESSION_ID)!;
       expect(agent.status).toBe('waiting');
+      // stop means "still waiting" — preserve the notification from WaitingForUser
+      expect(agent.notificationMessage).toBe('Allow?');
+      expect(agent.notificationType).toBe('permission_request');
+    });
+
+    test('SessionEnded with reason "normal" clears notification fields', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'notification',
+        message: 'Waiting',
+      }));
+
+      processEvent(makeSessionEnded({ reason: 'normal' }));
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.status).toBe('completed');
       expect(agent.notificationMessage).toBeNull();
       expect(agent.notificationType).toBeNull();
     });

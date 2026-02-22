@@ -190,6 +190,30 @@ const styles = {
     padding: '10px 12px',
     fontSize: '12px',
   },
+  notificationBox: (type: 'notification' | 'permission_request') => {
+    const color = type === 'permission_request' ? '#ef4444' : '#fb923c';
+    return {
+      background: `${color}15`,
+      border: `1px solid ${color}30`,
+      borderRadius: '8px',
+      padding: '10px 12px',
+      fontSize: '12px',
+    };
+  },
+  notificationLabel: (type: 'notification' | 'permission_request') => ({
+    color: type === 'permission_request' ? '#ef4444' : '#fb923c',
+    fontWeight: 600,
+    fontSize: '11px',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    marginBottom: '4px',
+  }),
+  notificationMessage: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: '12px',
+    lineHeight: 1.5,
+    wordBreak: 'break-word' as const,
+  },
   toolName: {
     color: '#fbbf24',
     fontFamily: 'monospace',
@@ -284,6 +308,24 @@ export function AgentDetailPanel() {
                 </span>
               </div>
             </div>
+
+            {/* Notification message (when waiting for user) */}
+            {agent.status === 'waiting' && (
+              <>
+                <div style={styles.divider} />
+                <div style={styles.section}>
+                  <div style={styles.sectionTitle}>Waiting For</div>
+                  <div style={styles.notificationBox(agent.notificationType ?? 'notification')}>
+                    <div style={styles.notificationLabel(agent.notificationType ?? 'notification')}>
+                      {agent.notificationType === 'permission_request' ? 'Permission Required' : 'Needs Input'}
+                    </div>
+                    <div style={styles.notificationMessage}>
+                      {agent.notificationMessage || 'Waiting for user input'}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Active tool call */}
             {agent.activeToolCall && (

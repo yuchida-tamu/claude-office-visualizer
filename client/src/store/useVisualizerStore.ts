@@ -669,9 +669,18 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const currentRootId = get().rootAgentId;
         const root = currentRootId ? newAgents.get(currentRootId) : undefined;
         if (root && currentRootId) {
-          // "stop" fires between turns — agent is waiting for user, not finished
-          const newStatus = event.reason === 'stop' ? 'waiting' : 'completed';
-          newAgents.set(currentRootId, { ...root, status: newStatus, activeToolCall: null, notificationMessage: null, notificationType: null });
+          // "stop" fires between turns — agent is waiting for user, not finished.
+          // Preserve notification fields when staying in waiting state (a preceding
+          // WaitingForUser event may have set them); clear on actual completion.
+          const isStop = event.reason === 'stop';
+          const newStatus = isStop ? 'waiting' : 'completed';
+          newAgents.set(currentRootId, {
+            ...root,
+            status: newStatus,
+            activeToolCall: null,
+            notificationMessage: isStop ? root.notificationMessage : null,
+            notificationType: isStop ? root.notificationType : null,
+          });
           set({ agents: newAgents });
         }
         break;

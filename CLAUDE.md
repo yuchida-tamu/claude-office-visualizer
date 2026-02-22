@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Rules
+
+- **Commit after every meaningful chunk of changes.** After completing a logical unit of work (a bug fix, a new feature, a refactor, a documentation update), create a git commit immediately so changes can be reverted if necessary. Do not accumulate large uncommitted diffs.
+
 ## Commands
 
 ```bash

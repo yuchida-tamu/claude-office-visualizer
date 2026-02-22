@@ -25,7 +25,14 @@ cd server && npx tsc --noEmit   # Server only
 bun run build               # Builds shared → client (Vite)
 ```
 
-No linter is currently configured. Tests use Bun's built-in test runner (`bun test` from `server/`).
+No linter is currently configured. Tests use Bun's built-in test runner:
+
+```bash
+# Tests
+cd client && bun test           # Client tests (store, SlotBasedLayout, DeskManager, SceneBridge)
+cd server && bun test           # Server tests (routes, database, validation, websocket)
+cd hooks && bun test            # Hook script tests (all 12 hooks)
+```
 
 ## Architecture
 
@@ -55,9 +62,26 @@ The 3D scene is NOT React-managed. Key separation:
 
 The store's `updateAnimations()` is called from `SceneBridge.sync()` every frame to advance message particle progress. This means any Zustand selector returning new object references (like `selectStats`) will trigger re-renders ~60x/sec — always use `useShallow` from `zustand/react/shallow` for object-returning selectors.
 
+### Desk layout
+
+Agent desks use a **slot-based layout** (`SlotBasedLayout` in `client/src/scene/SlotBasedLayout.ts`). Positions are pre-defined in concentric rings — no parent lookup needed, so all agents get unique positions regardless of hook data quirks:
+
+- **Slot 0**: Center `(0, 0, 0)` — root agent
+- **Ring 1**: 8 slots at radius 4, evenly spaced
+- **Ring 2**: 12 slots at radius 8, half-step offset
+- **Overflow**: Additional rings at radius 12+ generated on demand (16 slots each)
+
+Positions are static — no force-directed physics. Slots are freed on agent removal and reused by the next spawn.
+
+### Notification popup
+
+When an agent enters `waiting` status (via `WaitingForUser` event), a floating notification badge appears above the desk. The `AgentNode` carries `notificationMessage` and `notificationType` (`'notification'` | `'permission_request'`). SceneBridge detects the status change and calls `DeskManager.showNotification()`, which renders a Three.js Sprite with a canvas-textured badge (orange accent for notifications, red for permission requests). The popup fades in, bobs gently, and fades out when the agent transitions away from waiting. Notification fields are cleared on all status transitions (ToolCallStarted, ToolCallCompleted, ToolCallFailed, SessionEnded).
+
 ### Agent state lifecycle
 
 Agents progress through: `spawning` → `active` → `thinking` (inferred after 3s idle) → `tool_executing` → `completed`. The `thinking` state is client-side inference only — no server event exists for it. The root agent also uses `waiting` (orange) when idle between turns. Completed sub-agents are removed from the store after a 500ms animation delay during live operation. History replay skips all animation timers and lets `cleanupStaleAgents()` handle removal instead.
+
+`AgentNode` fields: `id`, `parentId`, `children`, `status`, `agentType`, `model`, `taskDescription`, `position`, `activeToolCall`, `notificationMessage`, `notificationType`.
 
 ### History replay vs live events
 
@@ -77,6 +101,7 @@ Agents progress through: `spawning` → `active` → `thinking` (inferred after 
 - **`session_id` semantics**: For sub-agent hooks (`subagent-start`, `subagent-stop`), `session_id` is the **parent** session's ID. The sub-agent's own ID is in `agent_id`.
 - **`stop` hook vs `session-end` hook**: Both emit `SessionEnded` events. The `stop` hook fires between turns with `reason: "stop"` (agent is waiting, not finished). The `session-end` hook fires at actual session termination with `reason: "normal"`. The store treats `reason === "stop"` as `waiting` status, all other reasons as `completed`.
 - **`agent_id` format**: Sub-agent IDs are short hashes (e.g., `a8efeee`), while session IDs are full UUIDs. These never collide.
+- **`SubagentStart` hook may not fire**: In some scenarios (e.g., Agent Team), `SubagentStop` fires but `SubagentStart` does not. The store handles this by auto-creating the agent on `AgentCompleted` if it doesn't exist, using `session_id` as the parent. This makes the visualizer resilient to missed spawn events.
 
 ## Project management
 
@@ -86,7 +111,7 @@ Tasks and issues are tracked in the **Linear** project "Claude Code Visualizer" 
 
 - **React StrictMode** is enabled (`main.tsx`). Effects and renders run twice in dev. WebSocket lifecycle must guard against stale closures. The `connectionEpoch` counter invalidates orphaned `setTimeout` callbacks from the first mount's event processing.
 - **History replay must not set timers**: During history replay, `AgentCompleted`/`AgentSpawned`/`ToolCallFailed` handlers skip their `setTimeout` calls. Without this, completed sub-agents get desks created (by SceneBridge on the first RAF after replay), then 500ms later the timers delete them from the store, causing a visual flash of desks appearing and immediately despawning.
-- **`cleanupStaleAgents` removes completed sub-agents**: After history replay, all non-root completed agents are removed immediately. This prevents ghost desks from sub-agents whose `AgentCompleted` event was in the history batch.
+- **`cleanupStaleAgents` removes completed sub-agents and orphaned tool calls**: After history replay, all non-root completed agents are removed immediately. This prevents ghost desks from sub-agents whose `AgentCompleted` event was in the history batch. It also clears `activeToolCalls` entries not tracked by any agent's `activeToolCall` — these accumulate when `ToolCallStarted` events are in the history window but their matching `ToolCallCompleted` events are not.
 - **Server returns latest N events, not oldest**: `getEvents()` with `latest: true` uses a subquery (`ORDER BY timestamp DESC LIMIT N`) wrapped in an outer `ORDER BY ASC` to return the most recent events in chronological order.
 - **`rootAgentId` always updates**: `SessionStarted` sets `rootAgentId: event.session_id` unconditionally (not `??`), so it always tracks the most recent session. After replay, if the root's last event is >15s stale, its status is set to `waiting`.
 - **Vite proxy**: In dev, `/ws` and `/api` are proxied to the Bun server at `:3333` via `vite.config.ts`. Production builds need a reverse proxy or direct connection.

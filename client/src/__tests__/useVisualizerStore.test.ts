@@ -1147,6 +1147,131 @@ describe('useVisualizerStore', () => {
     });
   });
 
+  // =========================================================================
+  // Notification fields on AgentNode
+  // =========================================================================
+
+  describe('notification fields', () => {
+    test('SessionStarted creates agent with null notification fields', () => {
+      setupRootSession();
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('AgentSpawned creates agent with null notification fields', () => {
+      setupRootSession();
+      processEvent(makeAgentSpawned({ agent_id: AGENT_ID }), Date.now());
+      const agent = getState().agents.get(AGENT_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('AgentCompleted auto-created agent has null notification fields', () => {
+      setupRootSession();
+      processEvent(makeAgentCompleted({
+        agent_id: 'auto-created',
+        session_id: SESSION_ID,
+      }), Date.now());
+      const agent = getState().agents.get('auto-created')!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('WaitingForUser stores notificationMessage and notificationType on agent', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'permission_request',
+        message: 'Allow file write?',
+      }));
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.status).toBe('waiting');
+      expect(agent.notificationMessage).toBe('Allow file write?');
+      expect(agent.notificationType).toBe('permission_request');
+    });
+
+    test('WaitingForUser with notification type stores correctly', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'notification',
+        message: 'Task completed, waiting for next instruction',
+      }));
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBe('Task completed, waiting for next instruction');
+      expect(agent.notificationType).toBe('notification');
+    });
+
+    test('ToolCallStarted clears notification fields', () => {
+      setupRootSession();
+      // Set notification via WaitingForUser
+      processEvent(makeWaitingForUser({
+        notification_type: 'permission_request',
+        message: 'Allow write?',
+      }));
+      expect(getState().agents.get(SESSION_ID)!.notificationMessage).toBe('Allow write?');
+
+      // Tool call starts — agent transitions away from waiting
+      processEvent(makeToolCallStarted());
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('SessionEnded clears notification fields', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'notification',
+        message: 'Waiting for input',
+      }));
+      expect(getState().agents.get(SESSION_ID)!.notificationMessage).toBe('Waiting for input');
+
+      processEvent(makeSessionEnded({ reason: 'normal' }));
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('SessionEnded with reason "stop" clears notification fields', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'permission_request',
+        message: 'Allow?',
+      }));
+
+      processEvent(makeSessionEnded({ reason: 'stop' }));
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.status).toBe('waiting');
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('ToolCallCompleted clears notification fields', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'notification',
+        message: 'Waiting',
+      }));
+      processEvent(makeToolCallStarted());
+      processEvent(makeToolCallCompleted());
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+
+    test('ToolCallFailed clears notification fields', () => {
+      setupRootSession();
+      processEvent(makeWaitingForUser({
+        notification_type: 'notification',
+        message: 'Waiting',
+      }));
+      processEvent(makeToolCallStarted());
+      processEvent(makeToolCallFailed());
+      const agent = getState().agents.get(SESSION_ID)!;
+      expect(agent.notificationMessage).toBeNull();
+      expect(agent.notificationType).toBeNull();
+    });
+  });
+
   // -----------------------------------------------------------------
   // Bug fix: activeToolCalls cleanup after history replay
   // -----------------------------------------------------------------

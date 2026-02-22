@@ -34,6 +34,10 @@ interface DeskInstance {
   despawnProgress: number; // 0..1
   // Error flash state
   errorFlashTime: number; // remaining flash time in seconds
+  // Notification popup state
+  notificationSprite: THREE.Sprite | null;
+  notificationVisible: boolean;
+  notificationFadeProgress: number; // 0=hidden, 1=fully visible
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +140,9 @@ export class DeskManager {
       despawning: false,
       despawnProgress: 0,
       errorFlashTime: 0,
+      notificationSprite: null,
+      notificationVisible: false,
+      notificationFadeProgress: 0,
     });
   }
 
@@ -183,6 +190,37 @@ export class DeskManager {
     const desk = this.desks.get(agentId);
     if (!desk) return;
     desk.errorFlashTime = 0.8; // seconds
+  }
+
+  /** Show a notification popup above the desk. */
+  showNotification(agentId: string, type: 'notification' | 'permission_request' | null, message: string | null): void {
+    const desk = this.desks.get(agentId);
+    if (!desk) return;
+
+    // Remove existing notification sprite if present
+    if (desk.notificationSprite) {
+      desk.group.remove(desk.notificationSprite);
+      (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
+      (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
+      desk.notificationSprite = null;
+    }
+
+    const sprite = this.buildNotificationSprite(type, message);
+    sprite.position.set(0, 2.2, 0);
+    sprite.scale.set(1.5, 0.375, 1);
+    sprite.name = 'notification-popup';
+    desk.group.add(sprite);
+
+    desk.notificationSprite = sprite;
+    desk.notificationVisible = true;
+    desk.notificationFadeProgress = 0;
+  }
+
+  /** Hide the notification popup with fade-out animation. */
+  hideNotification(agentId: string): void {
+    const desk = this.desks.get(agentId);
+    if (!desk || !desk.notificationSprite) return;
+    desk.notificationVisible = false;
   }
 
   /** Called each frame. */
@@ -234,6 +272,32 @@ export class DeskManager {
         if (desk.errorFlashTime <= 0) {
           desk.monitorMaterial.emissive.setHex(0x1a3a5c);
           desk.monitorMaterial.emissiveIntensity = 0.4;
+        }
+      }
+
+      // Notification popup fade and bob animation
+      if (desk.notificationSprite) {
+        const FADE_SPEED = 3; // progress units per second
+        if (desk.notificationVisible) {
+          desk.notificationFadeProgress = Math.min(desk.notificationFadeProgress + deltaTime * FADE_SPEED, 1);
+        } else {
+          desk.notificationFadeProgress = Math.max(desk.notificationFadeProgress - deltaTime * FADE_SPEED, 0);
+          if (desk.notificationFadeProgress <= 0) {
+            // Fade-out complete — remove sprite
+            desk.group.remove(desk.notificationSprite);
+            (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
+            (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
+            desk.notificationSprite = null;
+            desk.notificationFadeProgress = 0;
+          }
+        }
+
+        if (desk.notificationSprite) {
+          const mat = desk.notificationSprite.material as THREE.SpriteMaterial;
+          mat.opacity = desk.notificationFadeProgress;
+          // Gentle bob animation
+          const baseY = 2.2;
+          desk.notificationSprite.position.y = baseY + Math.sin(time * 2) * 0.05;
         }
       }
 
@@ -413,8 +477,99 @@ export class DeskManager {
     return this.desks.get(desk.parentId) ?? null;
   }
 
+  private buildNotificationSprite(
+    type: 'notification' | 'permission_request' | null,
+    message: string | null,
+  ): THREE.Sprite {
+    const texture = this.renderNotificationTexture(type, message);
+
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+    });
+
+    return new THREE.Sprite(material);
+  }
+
+  private renderNotificationTexture(
+    type: 'notification' | 'permission_request' | null,
+    message: string | null,
+  ): THREE.Texture {
+    // In headless environments (tests), fall back to a 1x1 data texture
+    if (typeof document === 'undefined') {
+      const data = new Uint8Array([255, 255, 255, 255]);
+      const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+
+    // Dark semi-transparent background with rounded corners
+    const radius = 8;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(256 - radius, 0);
+    ctx.quadraticCurveTo(256, 0, 256, radius);
+    ctx.lineTo(256, 64 - radius);
+    ctx.quadraticCurveTo(256, 64, 256 - radius, 64);
+    ctx.lineTo(radius, 64);
+    ctx.quadraticCurveTo(0, 64, 0, 64 - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(15, 15, 25, 0.85)';
+    ctx.fill();
+
+    // Colored left accent bar
+    const accentColor = type === 'permission_request' ? '#ef4444' : '#fb923c';
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(6, 0);
+    ctx.lineTo(6, 64);
+    ctx.lineTo(radius, 64);
+    ctx.quadraticCurveTo(0, 64, 0, 64 - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Label text
+    const label = type === 'permission_request' ? 'Permission Required' : 'Needs Input';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, 16, 26);
+
+    // Truncated message text
+    if (message) {
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#9ca3af';
+      const truncated = message.length > 35 ? message.slice(0, 32) + '...' : message;
+      ctx.fillText(truncated, 16, 48);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
   private cleanupDesk(agentId: string, desk: DeskInstance): void {
     console.warn('[DeskMgr] cleanupDesk: fully removing', agentId);
+
+    // Dispose notification sprite if present
+    if (desk.notificationSprite) {
+      desk.group.remove(desk.notificationSprite);
+      (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
+      (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
+      desk.notificationSprite = null;
+    }
+
     this.scene.remove(desk.group);
 
     // Dispose desk-specific materials

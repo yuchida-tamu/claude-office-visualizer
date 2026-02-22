@@ -57,6 +57,10 @@ export class SceneBridge {
             this.toolAnimations.start(id, agent.activeToolCall.tool_name, group);
           }
         }
+        // If agent spawns already waiting (history replay), show notification immediately
+        if (agent.status === 'waiting') {
+          deskManager.showNotification(id, agent.notificationType, agent.notificationMessage);
+        }
         continue;
       }
 
@@ -67,6 +71,13 @@ export class SceneBridge {
         // Error flash
         if (agent.status === 'error') {
           deskManager.triggerErrorFlash(id);
+        }
+
+        // Notification popup: show on transition TO waiting, hide on transition FROM waiting
+        if (agent.status === 'waiting') {
+          deskManager.showNotification(id, agent.notificationType, agent.notificationMessage);
+        } else if (prev.status === 'waiting') {
+          deskManager.hideNotification(id);
         }
       }
 

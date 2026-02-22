@@ -395,6 +395,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           taskDescription: null,
           position: { x: 0, y: 0, z: 0 },
           activeToolCall: null,
+          notificationMessage: null,
+          notificationType: null,
         };
         newAgents.set(event.session_id, newAgent);
         set({
@@ -423,6 +425,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           taskDescription: event.task_description,
           position: { x: 0, y: 0, z: 0 },
           activeToolCall: null,
+          notificationMessage: null,
+          notificationType: null,
         };
         newAgents.set(event.agent_id, newAgent);
 
@@ -481,6 +485,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
             taskDescription: null,
             position: { x: 0, y: 0, z: 0 },
             activeToolCall: null,
+            notificationMessage: null,
+            notificationType: null,
           };
           newAgents.set(event.agent_id, agent);
           if (parent) {
@@ -541,6 +547,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
             ...agent,
             status: 'tool_executing',
             activeToolCall: toolCall,
+            notificationMessage: null,
+            notificationType: null,
           });
         }
 
@@ -559,6 +567,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
             ...agent,
             status: 'active',
             activeToolCall: null,
+            notificationMessage: null,
+            notificationType: null,
           });
         }
 
@@ -573,7 +583,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const newAgents = new Map(state.agents);
         const agent = newAgents.get(event.session_id);
         if (agent) {
-          newAgents.set(event.session_id, { ...agent, status: 'error', activeToolCall: null });
+          newAgents.set(event.session_id, { ...agent, status: 'error', activeToolCall: null, notificationMessage: null, notificationType: null });
           set({ activeToolCalls: newToolCalls, agents: newAgents });
 
           // Revert to active after brief error display (live events only)
@@ -635,7 +645,13 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const newAgents = new Map(state.agents);
         const agent = newAgents.get(event.session_id);
         if (agent) {
-          newAgents.set(event.session_id, { ...agent, status: 'waiting', activeToolCall: null });
+          newAgents.set(event.session_id, {
+            ...agent,
+            status: 'waiting',
+            activeToolCall: null,
+            notificationMessage: event.message,
+            notificationType: event.notification_type,
+          });
           set({ agents: newAgents });
         }
         break;
@@ -647,7 +663,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         if (root && state.rootAgentId) {
           // "stop" fires between turns — agent is waiting for user, not finished
           const newStatus = event.reason === 'stop' ? 'waiting' : 'completed';
-          newAgents.set(state.rootAgentId, { ...root, status: newStatus, activeToolCall: null });
+          newAgents.set(state.rootAgentId, { ...root, status: newStatus, activeToolCall: null, notificationMessage: null, notificationType: null });
           set({ agents: newAgents });
         }
         break;

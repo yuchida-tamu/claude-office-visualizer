@@ -37,6 +37,8 @@ export interface AgentNode {
   taskDescription: string | null;
   position: Position3D;
   activeToolCall: ActiveToolCall | null;
+  notificationMessage: string | null;
+  notificationType: 'notification' | 'permission_request' | null;
 }
 
 /**

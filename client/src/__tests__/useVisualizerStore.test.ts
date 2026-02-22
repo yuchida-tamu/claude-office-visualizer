@@ -430,11 +430,20 @@ describe('useVisualizerStore', () => {
       expect(getState().agents.get(agentId)!.status).toBe('completed');
     });
 
-    test('no-ops gracefully for unknown agent_id', () => {
+    test('auto-creates agent on AgentCompleted if not in store (missed AgentSpawned)', () => {
       setupRootSession();
-      // Complete a non-existent agent — should not throw
-      processEvent(makeAgentCompleted({ agent_id: 'nonexistent' }), Date.now());
-      expect(getState().agents.has('nonexistent')).toBe(false);
+      // SubagentStart hook may not fire, but SubagentStop does.
+      // AgentCompleted arrives for an agent never seen before.
+      processEvent(makeAgentCompleted({
+        agent_id: 'never-spawned',
+        session_id: SESSION_ID,
+      }), Date.now());
+
+      // Agent should be auto-created with completed status
+      expect(getState().agents.has('never-spawned')).toBe(true);
+      const agent = getState().agents.get('never-spawned')!;
+      expect(agent.status).toBe('completed');
+      expect(agent.parentId).toBe(SESSION_ID);
     });
   });
 
@@ -1135,6 +1144,58 @@ describe('useVisualizerStore', () => {
     test('MessageSent creates in-flight message even without agents in store', () => {
       processEvent(makeMessageSent());
       expect(getState().activeMessages.length).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Bug fix: activeToolCalls cleanup after history replay
+  // -----------------------------------------------------------------
+  describe('activeToolCalls cleanup after history replay', () => {
+    test('orphaned ToolCallStarted entries are cleared after history replay', () => {
+      // Simulate history replay where ToolCallStarted has no matching Completed
+      // (the Completed event fell outside the 500-event window)
+      const historyTime = Date.now() - 30_000;
+      processEvent(makeSessionStarted(), historyTime);
+      processEvent(
+        makeToolCallStarted({ tool_use_id: 'orphan-1', session_id: SESSION_ID }),
+        historyTime + 1000,
+      );
+      processEvent(
+        makeToolCallStarted({ tool_use_id: 'orphan-2', session_id: SESSION_ID }),
+        historyTime + 2000,
+      );
+      // Only orphan-2 gets a Completed event
+      processEvent(
+        makeToolCallCompleted({ tool_use_id: 'orphan-2', session_id: SESSION_ID }),
+        historyTime + 3000,
+      );
+
+      // Before cleanup: orphan-1 is still in activeToolCalls
+      expect(getState().activeToolCalls.size).toBe(1);
+      expect(getState().activeToolCalls.has('orphan-1')).toBe(true);
+
+      // After cleanup: stale tool calls should be removed
+      getState().cleanupStaleAgents();
+      expect(getState().activeToolCalls.size).toBe(0);
+    });
+
+    test('activeToolCalls for the root agent in waiting status are cleared', () => {
+      const historyTime = Date.now() - 30_000;
+      processEvent(makeSessionStarted(), historyTime);
+      processEvent(
+        makeToolCallStarted({ tool_use_id: 'stale-tool', session_id: SESSION_ID }),
+        historyTime + 1000,
+      );
+      // Session ends with "stop" → root goes to waiting
+      processEvent(makeSessionEnded({ reason: 'stop' }), historyTime + 5000);
+
+      // Root agent is waiting but activeToolCalls still has stale entry
+      expect(getState().agents.get(SESSION_ID)?.status).toBe('waiting');
+      expect(getState().activeToolCalls.size).toBe(1);
+
+      getState().cleanupStaleAgents();
+      // After cleanup, stale tool calls should be gone
+      expect(getState().activeToolCalls.size).toBe(0);
     });
   });
 });

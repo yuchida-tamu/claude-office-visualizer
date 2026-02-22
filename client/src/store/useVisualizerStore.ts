@@ -340,8 +340,29 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       }
     }
 
-    if (changed) {
-      set({ agents: newAgents });
+    // Clear orphaned activeToolCalls — ToolCallStarted events whose matching
+    // Completed/Failed events fell outside the history replay window leave
+    // stale entries. Remove any tool call not actively tracked by an agent.
+    const validToolIds = new Set<string>();
+    for (const agent of newAgents.values()) {
+      if (agent.activeToolCall) {
+        validToolIds.add(agent.activeToolCall.tool_use_id);
+      }
+    }
+    const newToolCalls = new Map(state.activeToolCalls);
+    let toolCallsChanged = false;
+    for (const toolId of newToolCalls.keys()) {
+      if (!validToolIds.has(toolId)) {
+        newToolCalls.delete(toolId);
+        toolCallsChanged = true;
+      }
+    }
+
+    if (changed || toolCallsChanged) {
+      set({
+        ...(changed ? { agents: newAgents } : {}),
+        ...(toolCallsChanged ? { activeToolCalls: newToolCalls } : {}),
+      });
     }
   },
 
@@ -442,7 +463,34 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
 
       case 'AgentCompleted': {
         const newAgents = new Map(state.agents);
-        const agent = newAgents.get(event.agent_id);
+        let agent = newAgents.get(event.agent_id);
+
+        // Auto-create agent if AgentSpawned was missed (e.g. SubagentStart
+        // hook didn't fire). Use session_id as parentId since that's the
+        // parent session for subagent hooks.
+        if (!agent) {
+          const parentId = event.session_id;
+          const parent = newAgents.get(parentId);
+          agent = {
+            id: event.agent_id,
+            parentId: parent ? parentId : null,
+            children: [],
+            status: 'active',
+            agentType: 'unknown',
+            model: 'unknown',
+            taskDescription: null,
+            position: { x: 0, y: 0, z: 0 },
+            activeToolCall: null,
+          };
+          newAgents.set(event.agent_id, agent);
+          if (parent) {
+            newAgents.set(parentId, {
+              ...parent,
+              children: [...parent.children, event.agent_id],
+            });
+          }
+        }
+
         if (agent) {
           newAgents.set(event.agent_id, { ...agent, status: 'completed', activeToolCall: null });
           set({ agents: newAgents });

@@ -1,0 +1,43 @@
+{
+  "name": "claude-code-visualizer",
+  "version": "0.1.0",
+  "description": "Real-time 3D visualization of Claude Code agent orchestration",
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "bun run hooks/src/session-start.ts" }
+    ],
+    "SessionEnd": [
+      { "type": "command", "command": "bun run hooks/src/session-end.ts" }
+    ],
+    "SubagentStart": [
+      { "type": "command", "command": "bun run hooks/src/subagent-start.ts" }
+    ],
+    "SubagentStop": [
+      { "type": "command", "command": "bun run hooks/src/subagent-stop.ts" }
+    ],
+    "PreToolUse": [
+      { "type": "command", "command": "bun run hooks/src/pre-tool-use.ts" }
+    ],
+    "PostToolUse": [
+      { "type": "command", "command": "bun run hooks/src/post-tool-use.ts" }
+    ],
+    "PostToolUseFailure": [
+      { "type": "command", "command": "bun run hooks/src/post-tool-use-failure.ts" }
+    ],
+    "UserPromptSubmit": [
+      { "type": "command", "command": "bun run hooks/src/user-prompt-submit.ts" }
+    ],
+    "Stop": [
+      { "type": "command", "command": "bun run hooks/src/stop.ts" }
+    ],
+    "Notification": [
+      { "type": "command", "command": "bun run hooks/src/notification.ts" }
+    ],
+    "PermissionRequest": [
+      { "type": "command", "command": "bun run hooks/src/permission-request.ts" }
+    ],
+    "PreCompact": [
+      { "type": "command", "command": "bun run hooks/src/pre-compact.ts" }
+    ]
+  }
+}

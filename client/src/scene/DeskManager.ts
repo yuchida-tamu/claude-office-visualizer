@@ -9,6 +9,8 @@ import { SlotBasedLayout } from './SlotBasedLayout';
 
 const DESK_MODEL_URL = '/models/desk.glb';
 const MONITOR_MODEL_URL = '/models/monitor.glb';
+const CHAIR_MODEL_URL = '/models/chair.glb';
+const AVATAR_MODEL_URL = '/models/avater.glb';
 
 // ---------------------------------------------------------------------------
 // Status indicator colors
@@ -65,9 +67,11 @@ export class DeskManager {
   // GLB model templates — loaded once, cloned per desk
   private deskTemplate: THREE.Group | null = null;
   private monitorTemplate: THREE.Group | null = null;
+  private chairTemplate: THREE.Group | null = null;
+  private avatarTemplate: THREE.Group | null = null;
 
   // Shared status indicator geometry
-  private statusGeo = new THREE.SphereGeometry(0.08, 16, 16);
+  private statusGeo = new THREE.SphereGeometry(0.15, 16, 16);
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -76,28 +80,16 @@ export class DeskManager {
   /** Load GLB model templates. Must be called before addDesk(). */
   async loadModels(): Promise<void> {
     const loader = new GLTFLoader();
-    const [deskGLTF, monitorGLTF] = await Promise.all([
+    const [deskGLTF, monitorGLTF, chairGLTF, avatarGLTF] = await Promise.all([
       loader.loadAsync(DESK_MODEL_URL),
       loader.loadAsync(MONITOR_MODEL_URL),
+      loader.loadAsync(CHAIR_MODEL_URL),
+      loader.loadAsync(AVATAR_MODEL_URL),
     ]);
     this.deskTemplate = deskGLTF.scene;
     this.monitorTemplate = monitorGLTF.scene;
-
-    // Debug: log mesh names so we know what's in each model
-    console.warn('[DeskMgr] Desk model meshes:');
-    this.deskTemplate.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const m = child as THREE.Mesh;
-        console.warn(`  - "${m.name}" type=${m.type} visible=${m.visible} material=${(m.material as THREE.Material).type}`);
-      }
-    });
-    console.warn('[DeskMgr] Monitor model meshes:');
-    this.monitorTemplate.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const m = child as THREE.Mesh;
-        console.warn(`  - "${m.name}" type=${m.type} visible=${m.visible} material=${(m.material as THREE.Material).type}`);
-      }
-    });
+    this.chairTemplate = chairGLTF.scene;
+    this.avatarTemplate = avatarGLTF.scene;
   }
 
   /** Add a new desk for an agent. */
@@ -228,7 +220,7 @@ export class DeskManager {
 
     const sprite = this.buildNotificationSprite(type, message);
     sprite.position.set(0, 2.2, 0);
-    sprite.scale.set(1.5, 0.375, 1);
+    sprite.scale.set(2.0, 0.5, 1);
     sprite.name = 'notification-popup';
     desk.group.add(sprite);
 
@@ -370,42 +362,32 @@ export class DeskManager {
   private buildDeskGroup(agentId: string): THREE.Group {
     const group = new THREE.Group();
 
-    // Clone desk model (table + chair + avatar)
+    // Clone desk model
     if (this.deskTemplate) {
       const deskClone = this.deskTemplate.clone();
-      deskClone.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          mesh.visible = true;
-          // Clone material and set DoubleSide to handle flipped normals from Blender
-          if (mesh.material instanceof THREE.MeshStandardMaterial) {
-            mesh.material = mesh.material.clone();
-            mesh.material.side = THREE.DoubleSide;
-          }
-        }
-      });
+      this.prepareClone(deskClone);
       group.add(deskClone);
     }
 
     // Clone monitor model
     if (this.monitorTemplate) {
       const monitorClone = this.monitorTemplate.clone();
-      monitorClone.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          mesh.visible = true;
-          // Clone material with DoubleSide
-          if (mesh.material instanceof THREE.MeshStandardMaterial) {
-            mesh.material = mesh.material.clone();
-            mesh.material.side = THREE.DoubleSide;
-          }
-        }
-      });
+      this.prepareClone(monitorClone);
       group.add(monitorClone);
+    }
+
+    // Clone chair model
+    if (this.chairTemplate) {
+      const chairClone = this.chairTemplate.clone();
+      this.prepareClone(chairClone);
+      group.add(chairClone);
+    }
+
+    // Clone avatar model
+    if (this.avatarTemplate) {
+      const avatarClone = this.avatarTemplate.clone();
+      this.prepareClone(avatarClone);
+      group.add(avatarClone);
     }
 
     // Status indicator (floating sphere above desk) — kept procedural
@@ -417,11 +399,27 @@ export class DeskManager {
       opacity: 0.9,
     });
     const statusSphere = new THREE.Mesh(this.statusGeo, statusMat);
-    statusSphere.position.set(0, 1.6, 0);
+    statusSphere.position.set(-0.8, 2.5, 0.8);
     statusSphere.name = 'status-indicator';
     group.add(statusSphere);
 
     return group;
+  }
+
+  /** Enable shadows, visibility, and DoubleSide on all meshes in a cloned model. */
+  private prepareClone(clone: THREE.Group): void {
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.visible = true;
+        if (mesh.material instanceof THREE.MeshStandardMaterial) {
+          mesh.material = mesh.material.clone();
+          mesh.material.side = THREE.DoubleSide;
+        }
+      }
+    });
   }
 
   /**

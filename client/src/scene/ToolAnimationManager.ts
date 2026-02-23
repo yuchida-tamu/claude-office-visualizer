@@ -100,7 +100,7 @@ export class ToolAnimationManager {
     const color = CATEGORY_COLORS[category];
 
     const group = this.buildIcon(category, color);
-    group.position.set(0.4, 1.5, -0.25);
+    group.position.set(0.6, 2.0, -0.4);
     group.scale.setScalar(0); // Start invisible for fade-in
     deskGroup.add(group);
 
@@ -172,7 +172,7 @@ export class ToolAnimationManager {
       }
 
       // Bobbing animation (sin wave, amplitude 0.1)
-      icon.group.position.y = 1.5 + Math.sin(this.elapsedTime * 2) * 0.1;
+      icon.group.position.y = 2.0 + Math.sin(this.elapsedTime * 2) * 0.1;
 
       // Gentle rotation
       icon.group.rotation.y += deltaTime * 1.5;

@@ -1,6 +1,14 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { AgentStatus } from '@shared/agent';
 import { SlotBasedLayout } from './SlotBasedLayout';
+
+// ---------------------------------------------------------------------------
+// Model URLs
+// ---------------------------------------------------------------------------
+
+const DESK_MODEL_URL = '/models/desk.glb';
+const MONITOR_MODEL_URL = '/models/monitor.glb';
 
 // ---------------------------------------------------------------------------
 // Status indicator colors
@@ -46,7 +54,7 @@ interface DeskInstance {
 
 /**
  * DeskManager – creates and animates desks representing agents.
- * Uses force-directed layout for procedural placement.
+ * Uses GLB models for desk and monitor, with procedural status indicator.
  */
 export class DeskManager {
   private scene: THREE.Scene;
@@ -54,28 +62,42 @@ export class DeskManager {
   private layoutEngine = new SlotBasedLayout();
   private clock = new THREE.Clock();
 
-  // Shared geometries — created once, reused per desk
-  private deskSurfaceGeo: THREE.BoxGeometry;
-  private legGeo: THREE.CylinderGeometry;
-  private monitorGeo: THREE.BoxGeometry;
-  private monitorStandGeo: THREE.CylinderGeometry;
-  private chairSeatGeo: THREE.BoxGeometry;
-  private chairBackGeo: THREE.BoxGeometry;
-  private avatarGeo: THREE.CapsuleGeometry;
-  private statusGeo: THREE.SphereGeometry;
+  // GLB model templates — loaded once, cloned per desk
+  private deskTemplate: THREE.Group | null = null;
+  private monitorTemplate: THREE.Group | null = null;
+
+  // Shared status indicator geometry
+  private statusGeo = new THREE.SphereGeometry(0.08, 16, 16);
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+  }
 
-    // Pre-create shared geometries
-    this.deskSurfaceGeo = new THREE.BoxGeometry(1.6, 0.05, 0.8);
-    this.legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.7, 8);
-    this.monitorGeo = new THREE.BoxGeometry(0.6, 0.4, 0.03);
-    this.monitorStandGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.15, 8);
-    this.chairSeatGeo = new THREE.BoxGeometry(0.45, 0.05, 0.45);
-    this.chairBackGeo = new THREE.BoxGeometry(0.45, 0.4, 0.05);
-    this.avatarGeo = new THREE.CapsuleGeometry(0.12, 0.2, 8, 16);
-    this.statusGeo = new THREE.SphereGeometry(0.08, 16, 16);
+  /** Load GLB model templates. Must be called before addDesk(). */
+  async loadModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    const [deskGLTF, monitorGLTF] = await Promise.all([
+      loader.loadAsync(DESK_MODEL_URL),
+      loader.loadAsync(MONITOR_MODEL_URL),
+    ]);
+    this.deskTemplate = deskGLTF.scene;
+    this.monitorTemplate = monitorGLTF.scene;
+
+    // Debug: log mesh names so we know what's in each model
+    console.warn('[DeskMgr] Desk model meshes:');
+    this.deskTemplate.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh;
+        console.warn(`  - "${m.name}" type=${m.type} visible=${m.visible} material=${(m.material as THREE.Material).type}`);
+      }
+    });
+    console.warn('[DeskMgr] Monitor model meshes:');
+    this.monitorTemplate.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh;
+        console.warn(`  - "${m.name}" type=${m.type} visible=${m.visible} material=${(m.material as THREE.Material).type}`);
+      }
+    });
   }
 
   /** Add a new desk for an agent. */
@@ -104,8 +126,7 @@ export class DeskManager {
     // Named meshes
     const statusMesh = group.getObjectByName('status-indicator') as THREE.Mesh;
     const statusMat = statusMesh.material as THREE.MeshStandardMaterial;
-    const monitorMesh = group.getObjectByName('monitor-screen') as THREE.Mesh;
-    const monitorMat = monitorMesh.material as THREE.MeshStandardMaterial;
+    const monitorMat = this.findMonitorMaterial(group);
 
     // Parent-child line
     let parentLine: THREE.Line | null = null;
@@ -338,14 +359,7 @@ export class DeskManager {
       this.cleanupDesk(agentId, desk);
     }
 
-    // Dispose shared geometries
-    this.deskSurfaceGeo.dispose();
-    this.legGeo.dispose();
-    this.monitorGeo.dispose();
-    this.monitorStandGeo.dispose();
-    this.chairSeatGeo.dispose();
-    this.chairBackGeo.dispose();
-    this.avatarGeo.dispose();
+    // Dispose shared status geometry
     this.statusGeo.dispose();
   }
 
@@ -355,92 +369,46 @@ export class DeskManager {
 
   private buildDeskGroup(agentId: string): THREE.Group {
     const group = new THREE.Group();
-    const agentColor = this.hashColor(agentId);
 
-    // Desk surface
-    const surfaceMat = new THREE.MeshStandardMaterial({
-      color: 0xb08860,
-      roughness: 0.7,
-      metalness: 0.05,
-    });
-    const surface = new THREE.Mesh(this.deskSurfaceGeo, surfaceMat);
-    surface.position.y = 0.75;
-    surface.castShadow = true;
-    surface.receiveShadow = true;
-    group.add(surface);
-
-    // Desk legs
-    const legMat = new THREE.MeshStandardMaterial({
-      color: 0x666666,
-      roughness: 0.6,
-      metalness: 0.3,
-    });
-    const legOffsets = [
-      [-0.7, -0.3],
-      [0.7, -0.3],
-      [-0.7, 0.3],
-      [0.7, 0.3],
-    ];
-    for (const [lx, lz] of legOffsets) {
-      const leg = new THREE.Mesh(this.legGeo, legMat);
-      leg.position.set(lx, 0.35, lz);
-      leg.castShadow = true;
-      group.add(leg);
+    // Clone desk model (table + chair + avatar)
+    if (this.deskTemplate) {
+      const deskClone = this.deskTemplate.clone();
+      deskClone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.visible = true;
+          // Clone material and set DoubleSide to handle flipped normals from Blender
+          if (mesh.material instanceof THREE.MeshStandardMaterial) {
+            mesh.material = mesh.material.clone();
+            mesh.material.side = THREE.DoubleSide;
+          }
+        }
+      });
+      group.add(deskClone);
     }
 
-    // Monitor stand
-    const standMat = new THREE.MeshStandardMaterial({
-      color: 0x444444,
-      roughness: 0.5,
-      metalness: 0.4,
-    });
-    const stand = new THREE.Mesh(this.monitorStandGeo, standMat);
-    stand.position.set(0, 0.855, -0.25);
-    group.add(stand);
+    // Clone monitor model
+    if (this.monitorTemplate) {
+      const monitorClone = this.monitorTemplate.clone();
+      monitorClone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.visible = true;
+          // Clone material with DoubleSide
+          if (mesh.material instanceof THREE.MeshStandardMaterial) {
+            mesh.material = mesh.material.clone();
+            mesh.material.side = THREE.DoubleSide;
+          }
+        }
+      });
+      group.add(monitorClone);
+    }
 
-    // Monitor
-    const monitorMat = new THREE.MeshStandardMaterial({
-      color: 0x0a1628,
-      roughness: 0.3,
-      metalness: 0.1,
-      emissive: 0x1a3a5c,
-      emissiveIntensity: 0.4,
-    });
-    const monitor = new THREE.Mesh(this.monitorGeo, monitorMat);
-    monitor.position.set(0, 1.13, -0.25);
-    monitor.castShadow = true;
-    monitor.name = 'monitor-screen';
-    group.add(monitor);
-
-    // Chair seat
-    const chairMat = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-    const seat = new THREE.Mesh(this.chairSeatGeo, chairMat);
-    seat.position.set(0, 0.5, 0.5);
-    seat.castShadow = true;
-    group.add(seat);
-
-    // Chair back
-    const back = new THREE.Mesh(this.chairBackGeo, chairMat);
-    back.position.set(0, 0.72, 0.72);
-    back.castShadow = true;
-    group.add(back);
-
-    // Agent avatar (capsule on chair)
-    const avatarMat = new THREE.MeshStandardMaterial({
-      color: agentColor,
-      roughness: 0.5,
-      metalness: 0.2,
-    });
-    const avatar = new THREE.Mesh(this.avatarGeo, avatarMat);
-    avatar.position.set(0, 0.75, 0.5);
-    avatar.castShadow = true;
-    group.add(avatar);
-
-    // Status indicator (floating sphere above desk)
+    // Status indicator (floating sphere above desk) — kept procedural
     const statusMat = new THREE.MeshStandardMaterial({
       color: STATUS_COLORS.spawning,
       emissive: STATUS_COLORS.spawning,
@@ -456,19 +424,39 @@ export class DeskManager {
     return group;
   }
 
-  private hashColor(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      hash = hash & hash;
+  /**
+   * Find the monitor screen material from the desk group.
+   * Looks for a mesh named 'monitor-screen' first, then falls back to
+   * the first MeshStandardMaterial with an emissive property found in
+   * the monitor clone. If nothing is found, returns a dummy material.
+   */
+  private findMonitorMaterial(group: THREE.Group): THREE.MeshStandardMaterial {
+    // Try named mesh first
+    const named = group.getObjectByName('monitor-screen') as THREE.Mesh | null;
+    if (named && (named.material as THREE.MeshStandardMaterial)?.emissive) {
+      return named.material as THREE.MeshStandardMaterial;
     }
-    // Generate a pleasant hue with decent saturation
-    const h = ((hash & 0xff) / 255) * 360;
-    const s = 0.5 + ((hash >> 8) & 0xff) / 510; // 0.5-1.0
-    const l = 0.4 + ((hash >> 16) & 0xff) / 850; // 0.4-0.7
-    const color = new THREE.Color();
-    color.setHSL(h / 360, s, l);
-    return color.getHex();
+
+    // Fallback: find the first mesh with an emissive-capable material in the group
+    // (skip the status-indicator which is procedural)
+    let found: THREE.MeshStandardMaterial | null = null;
+    group.traverse((child) => {
+      if (found) return;
+      if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).name !== 'status-indicator') {
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (mat?.emissive) {
+          found = mat;
+        }
+      }
+    });
+
+    if (found) return found;
+
+    // Last resort: dummy material so callers never get null
+    return new THREE.MeshStandardMaterial({
+      emissive: 0x1a3a5c,
+      emissiveIntensity: 0.4,
+    });
   }
 
   private findParentDesk(agentId: string): DeskInstance | null {
@@ -574,9 +562,10 @@ export class DeskManager {
 
     // Dispose desk-specific materials
     desk.group.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        if (child.material instanceof THREE.Material) {
-          child.material.dispose();
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (mesh.material instanceof THREE.Material) {
+          mesh.material.dispose();
         }
       }
     });

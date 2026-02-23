@@ -20,9 +20,9 @@ export class PostProcessing {
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
-      0.4,  // strength
-      0.3,  // radius
-      0.8   // threshold
+      0.6,  // strength — slightly stronger so emissives pop in the dark
+      0.4,  // radius
+      1.2   // threshold — high so only emissive materials bloom, not surfaces
     );
     this.composer.addPass(this.bloomPass);
 

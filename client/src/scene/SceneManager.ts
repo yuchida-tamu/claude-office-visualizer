@@ -57,8 +57,8 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    this.renderer.setClearColor(0xdce8f0, 1); // Soft sky blue-gray background
+    this.renderer.toneMappingExposure = 0.8;
+    this.renderer.setClearColor(0x05050a, 1); // Dark midnight background
 
     // Sub-modules
     this.officeEnvironment = new OfficeEnvironment(this.scene);

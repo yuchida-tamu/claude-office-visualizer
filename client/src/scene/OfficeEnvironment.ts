@@ -40,31 +40,58 @@ export class OfficeEnvironment {
   }
 
   private createLighting(): void {
-    // Ambient light — warm white base
-    const ambient = new THREE.AmbientLight(0xfff5e6, 0.4);
+    // Ambient light — ensures nothing is fully black (walls, ceiling, props)
+    const ambient = new THREE.AmbientLight(0x1a1a2e, 1.5);
     this.scene.add(ambient);
     this.objects.push(ambient);
 
-    // Directional light — upper-right, warm tint, casts shadows
-    const directional = new THREE.DirectionalLight(0xfff0d6, 0.8);
-    directional.position.set(8, 12, 5);
-    directional.castShadow = true;
-    directional.shadow.mapSize.width = 2048;
-    directional.shadow.mapSize.height = 2048;
-    directional.shadow.camera.near = 0.5;
-    directional.shadow.camera.far = 50;
-    directional.shadow.camera.left = -15;
-    directional.shadow.camera.right = 15;
-    directional.shadow.camera.top = 15;
-    directional.shadow.camera.bottom = -15;
-    directional.shadow.bias = -0.001;
-    this.scene.add(directional);
-    this.objects.push(directional);
-
-    // Hemisphere light — natural sky/ground blend
-    const hemisphere = new THREE.HemisphereLight(0x87ceeb, 0xc4956a, 0.3);
+    // Hemisphere light — cool ceiling / warm floor fill
+    const hemisphere = new THREE.HemisphereLight(0x2a2a4a, 0x1a1510, 1.0);
     this.scene.add(hemisphere);
     this.objects.push(hemisphere);
+
+    // Main directional — slightly angled, casts shadows across full office
+    const main = new THREE.DirectionalLight(0xffe4b5, 2.5);
+    main.position.set(3, 15, 3);
+    main.castShadow = true;
+    main.shadow.mapSize.width = 4096;
+    main.shadow.mapSize.height = 4096;
+    main.shadow.camera.near = 0.5;
+    main.shadow.camera.far = 80;
+    main.shadow.camera.left = -50;
+    main.shadow.camera.right = 50;
+    main.shadow.camera.top = 50;
+    main.shadow.camera.bottom = -50;
+    main.shadow.bias = -0.001;
+    this.scene.add(main);
+    this.objects.push(main);
+
+    // Fill directional — opposite angle to reduce harsh shadows on walls
+    const fill = new THREE.DirectionalLight(0x6688bb, 1.2);
+    fill.position.set(-5, 8, -5);
+    fill.castShadow = false;
+    this.scene.add(fill);
+    this.objects.push(fill);
+
+    // Point lights spread across the office for localized warm pools
+    const pointPositions = [
+      [0, 4, 0],
+      [-12, 4, 0],
+      [12, 4, 0],
+      [0, 4, -12],
+      [0, 4, 12],
+      [-12, 4, -12],
+      [12, 4, -12],
+      [-12, 4, 12],
+      [12, 4, 12],
+    ];
+    for (const [x, y, z] of pointPositions) {
+      const pl = new THREE.PointLight(0xffe4b5, 20, 18, 2);
+      pl.position.set(x, y, z);
+      pl.castShadow = false;
+      this.scene.add(pl);
+      this.objects.push(pl);
+    }
   }
 
   dispose(): void {

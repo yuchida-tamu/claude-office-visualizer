@@ -79,7 +79,7 @@ export class SceneManager {
 
   /** Initialize scene contents and start the render loop. */
   async init(): Promise<void> {
-    this.officeEnvironment.init();
+    await this.officeEnvironment.init();
 
     // Resize observer
     this.resizeObserver = new ResizeObserver(() => this.resize());

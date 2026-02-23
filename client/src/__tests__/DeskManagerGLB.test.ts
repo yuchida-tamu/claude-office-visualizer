@@ -272,3 +272,224 @@ describe('DeskManager GLB models', () => {
     dm2.updateDeskState('agent-no-named-mesh', 'active');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Desk/Avatar Separation Tests
+// ---------------------------------------------------------------------------
+
+describe('DeskManager desk/avatar separation', () => {
+  let scene: InstanceType<typeof THREE.Scene>;
+  let dm: InstanceType<typeof DeskManager>;
+
+  beforeEach(async () => {
+    sceneChildren = [];
+    deskTemplate = buildDeskTemplate();
+    monitorTemplate = buildMonitorTemplate();
+    scene = new THREE.Scene();
+    dm = new DeskManager(scene);
+    await dm.loadModels();
+  });
+
+  // --- initDesks ---
+
+  describe('initDesks', () => {
+    test('pre-renders the requested number of desks into the scene', () => {
+      dm.initDesks(5);
+      // 5 desk groups should be added to the scene
+      expect(sceneChildren.length).toBe(5);
+    });
+
+    test('pre-rendered desks contain desk and monitor meshes but no avatar or status indicator', () => {
+      dm.initDesks(1);
+      const deskGroup = sceneChildren[0] as MockGroup;
+      // Should have desk-surface and monitor-screen from templates
+      expect(deskGroup.getObjectByName('desk-surface')).not.toBeNull();
+      expect(deskGroup.getObjectByName('monitor-screen')).not.toBeNull();
+      // Should NOT have status-indicator or avatar (those come with spawnAvatar)
+      expect(deskGroup.getObjectByName('status-indicator')).toBeNull();
+    });
+
+    test('pre-rendered desks are at full scale (not animated)', () => {
+      dm.initDesks(3);
+      for (const child of sceneChildren) {
+        const group = child as MockGroup;
+        expect(group.scale.x).toBe(1);
+        expect(group.scale.y).toBe(1);
+        expect(group.scale.z).toBe(1);
+      }
+    });
+
+    test('pre-rendered desks are positioned at distinct slot positions', () => {
+      dm.initDesks(3);
+      const positions = sceneChildren.map((c) => {
+        const g = c as MockGroup;
+        return `${g.position.x},${g.position.z}`;
+      });
+      const unique = new Set(positions);
+      expect(unique.size).toBe(3);
+    });
+  });
+
+  // --- spawnAvatar ---
+
+  describe('spawnAvatar', () => {
+    test('assigns agent to a pre-rendered desk and makes getDeskGroup return it', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      const group = dm.getDeskGroup('agent-1');
+      expect(group).not.toBeNull();
+    });
+
+    test('adds a status-indicator to the desk group when avatar spawns', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      const group = dm.getDeskGroup('agent-1')!;
+      const indicator = group.getObjectByName('status-indicator');
+      expect(indicator).not.toBeNull();
+    });
+
+    test('getDeskGroup returns null for unknown agent', () => {
+      dm.initDesks(5);
+      expect(dm.getDeskGroup('nonexistent')).toBeNull();
+    });
+
+    test('multiple agents get different desks', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      dm.spawnAvatar('agent-2');
+      const g1 = dm.getDeskGroup('agent-1')!;
+      const g2 = dm.getDeskGroup('agent-2')!;
+      expect(g1).not.toBe(g2);
+    });
+
+    test('updateDeskState works after spawnAvatar', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      // Should not throw
+      dm.updateDeskState('agent-1', 'active');
+      dm.updateDeskState('agent-1', 'tool_executing');
+    });
+
+    test('setMonitorGlow works after spawnAvatar', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      // Should not throw
+      dm.setMonitorGlow('agent-1', 0xff0000, 1.0);
+    });
+
+    test('showNotification works after spawnAvatar', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      // Should not throw
+      dm.showNotification('agent-1', 'notification', 'Test message');
+    });
+
+    test('triggerErrorFlash works after spawnAvatar', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      // Should not throw
+      dm.triggerErrorFlash('agent-1');
+    });
+
+    test('spawnAvatar is idempotent for same agent', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      const g1 = dm.getDeskGroup('agent-1');
+      dm.spawnAvatar('agent-1'); // second call should not change anything
+      const g2 = dm.getDeskGroup('agent-1');
+      expect(g1).toBe(g2);
+    });
+  });
+
+  // --- despawnAvatar ---
+
+  describe('despawnAvatar', () => {
+    test('removes agent from getDeskGroup after despawn completes', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      expect(dm.getDeskGroup('agent-1')).not.toBeNull();
+      dm.despawnAvatar('agent-1');
+      // Simulate despawn animation completing (run update with large deltaTime)
+      dm.update(10);
+      expect(dm.getDeskGroup('agent-1')).toBeNull();
+    });
+
+    test('desk furniture remains in the scene after avatar despawn', () => {
+      dm.initDesks(5);
+      const initialSceneCount = sceneChildren.length;
+      dm.spawnAvatar('agent-1');
+      dm.despawnAvatar('agent-1');
+      dm.update(10);
+      // Scene should still have the same number of desk groups (furniture persists)
+      expect(sceneChildren.length).toBe(initialSceneCount);
+    });
+
+    test('freed desk can be reused by a new agent', () => {
+      dm.initDesks(1); // Only 1 desk
+      dm.spawnAvatar('agent-1');
+      const g1 = dm.getDeskGroup('agent-1')!;
+      dm.despawnAvatar('agent-1');
+      dm.update(10); // complete despawn
+
+      // Now agent-2 should be able to use the freed desk
+      dm.spawnAvatar('agent-2');
+      const g2 = dm.getDeskGroup('agent-2')!;
+      expect(g2).not.toBeNull();
+      // Should reuse the same desk group
+      expect(g2).toBe(g1);
+    });
+
+    test('status-indicator is removed after despawn', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      const group = dm.getDeskGroup('agent-1')!;
+      expect(group.getObjectByName('status-indicator')).not.toBeNull();
+      dm.despawnAvatar('agent-1');
+      dm.update(10);
+      // After despawn, status indicator should be gone from the desk group
+      expect(group.getObjectByName('status-indicator')).toBeNull();
+    });
+
+    test('despawnAvatar is safe to call for unknown agent', () => {
+      dm.initDesks(5);
+      // Should not throw
+      dm.despawnAvatar('nonexistent');
+    });
+  });
+
+  // --- getDeskPosition ---
+
+  describe('getDeskPosition', () => {
+    test('returns position for spawned agent', () => {
+      dm.initDesks(5);
+      dm.spawnAvatar('agent-1');
+      const pos = dm.getDeskPosition('agent-1');
+      expect(pos).not.toBeNull();
+    });
+
+    test('returns null for unspawned agent', () => {
+      dm.initDesks(5);
+      expect(dm.getDeskPosition('nonexistent')).toBeNull();
+    });
+  });
+
+  // --- Scene count invariant ---
+
+  describe('scene invariant', () => {
+    test('initDesks adds groups to scene, spawn/despawn does not change scene child count', () => {
+      dm.initDesks(3);
+      const afterInit = sceneChildren.length;
+      expect(afterInit).toBe(3);
+
+      dm.spawnAvatar('agent-1');
+      // No new groups added to scene (avatar goes into existing desk group)
+      // Parent lines may be added, so check only desk groups
+      expect(sceneChildren.filter(c => c instanceof MockGroup).length).toBeGreaterThanOrEqual(3);
+
+      dm.despawnAvatar('agent-1');
+      dm.update(10);
+      // Desk groups remain
+      expect(sceneChildren.filter(c => c instanceof MockGroup).length).toBeGreaterThanOrEqual(3);
+    });
+  });
+});

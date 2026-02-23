@@ -6,22 +6,20 @@ describe('SlotBasedLayout', () => {
   // Slot generation
   // -----------------------------------------------------------------------
 
-  test('generates 21 pre-defined slots (1 center + 8 ring1 + 12 ring2)', () => {
+  test('generates 21 pre-defined slots (1 leader + 4 rows × 5)', () => {
     const layout = new SlotBasedLayout();
-    // We can verify by filling all 21 slots without triggering overflow
     const positions = [];
     for (let i = 0; i < 21; i++) {
       positions.push(layout.addNode(`agent-${i}`));
     }
-    // All 21 should have unique positions
     expect(positions.length).toBe(21);
   });
 
   // -----------------------------------------------------------------------
-  // Slot 0 at origin
+  // Slot 0: leader at front-center
   // -----------------------------------------------------------------------
 
-  test('first slot is at origin (0, 0, 0)', () => {
+  test('first slot (leader) is at front-center (0, 0, 0)', () => {
     const layout = new SlotBasedLayout();
     const pos = layout.addNode('root');
     expect(pos.x).toBe(0);
@@ -55,7 +53,6 @@ describe('SlotBasedLayout', () => {
       positions.push({ x: pos.x, y: pos.y, z: pos.z });
     }
 
-    // Check all positions are unique
     for (let i = 0; i < positions.length; i++) {
       for (let j = i + 1; j < positions.length; j++) {
         const same =
@@ -77,10 +74,8 @@ describe('SlotBasedLayout', () => {
     const pos1 = layout.addNode('agent-1');
     layout.removeNode('agent-1');
 
-    // getPosition should return null after removal
     expect(layout.getPosition('agent-1')).toBeNull();
 
-    // The freed slot should be reusable
     const pos2 = layout.addNode('agent-2');
     expect(pos2.x).toBeCloseTo(pos1.x, 5);
     expect(pos2.y).toBeCloseTo(pos1.y, 5);
@@ -93,16 +88,13 @@ describe('SlotBasedLayout', () => {
 
   test('freed slot is reassigned to next spawn', () => {
     const layout = new SlotBasedLayout();
-    // Fill first 5 slots
     for (let i = 0; i < 5; i++) {
       layout.addNode(`agent-${i}`);
     }
 
-    // Remove agent at slot 2 (third agent)
     const posSlot2 = layout.getPosition('agent-2')!;
     layout.removeNode('agent-2');
 
-    // Next add should reuse the freed slot (slot 2)
     const newPos = layout.addNode('agent-new');
     expect(newPos.x).toBeCloseTo(posSlot2.x, 5);
     expect(newPos.y).toBeCloseTo(posSlot2.y, 5);
@@ -142,23 +134,20 @@ describe('SlotBasedLayout', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Overflow: generates additional rings
+  // Overflow: generates additional rows
   // -----------------------------------------------------------------------
 
   test('generates overflow slots when all 21 pre-defined slots are full', () => {
     const layout = new SlotBasedLayout();
-    // Fill all 21 pre-defined slots
     for (let i = 0; i < 21; i++) {
       layout.addNode(`agent-${i}`);
     }
 
-    // 22nd agent should still get a valid position (overflow ring)
     const overflowPos = layout.addNode('overflow-agent');
     expect(overflowPos).toBeDefined();
     expect(typeof overflowPos.x).toBe('number');
     expect(typeof overflowPos.z).toBe('number');
 
-    // Overflow position should be unique from all others
     for (let i = 0; i < 21; i++) {
       const existingPos = layout.getPosition(`agent-${i}`)!;
       const same =
@@ -169,28 +158,26 @@ describe('SlotBasedLayout', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Ring geometry: distance from origin
+  // Grid geometry
   // -----------------------------------------------------------------------
 
-  test('ring 1 slots are at distance 4 from origin', () => {
+  test('grid row 1 slots are behind the leader (z > 0)', () => {
     const layout = new SlotBasedLayout();
-    // Slot 0 is at origin, slots 1-8 are ring 1
-    layout.addNode('root'); // slot 0
-    const ring1Pos = layout.addNode('ring1-agent'); // slot 1
-    const distance = Math.sqrt(ring1Pos.x ** 2 + ring1Pos.z ** 2);
-    expect(distance).toBeCloseTo(4, 1);
+    layout.addNode('root'); // slot 0 (leader)
+    const row1Pos = layout.addNode('row1-agent'); // slot 1
+    expect(row1Pos.z).toBeGreaterThan(0);
   });
 
-  test('ring 2 slots are at distance 8 from origin', () => {
+  test('grid rows are spaced evenly in z', () => {
     const layout = new SlotBasedLayout();
-    // Fill slot 0 (center) + 8 ring 1 slots
-    for (let i = 0; i < 9; i++) {
+    // Fill leader + first row (5 desks)
+    for (let i = 0; i < 6; i++) {
       layout.addNode(`agent-${i}`);
     }
-    // Next agent goes to ring 2
-    const ring2Pos = layout.addNode('ring2-agent');
-    const distance = Math.sqrt(ring2Pos.x ** 2 + ring2Pos.z ** 2);
-    expect(distance).toBeCloseTo(8, 1);
+    // Next agent is in row 2
+    const row2Pos = layout.addNode('row2-agent');
+    const row1Pos = layout.getPosition('agent-1')!; // first grid row
+    expect(row2Pos.z).toBeGreaterThan(row1Pos.z);
   });
 
   // -----------------------------------------------------------------------

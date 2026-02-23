@@ -45,8 +45,8 @@ export class SceneBridge {
     for (const [id, agent] of agents) {
       const prev = this.prevAgents.get(id);
       if (!prev) {
-        // New agent — create desk
-        deskManager.addDesk(id, agent.parentId ?? undefined);
+        // New agent — spawn avatar at pre-rendered desk
+        deskManager.spawnAvatar(id, agent.parentId ?? undefined);
         if (agent.status !== 'spawning') {
           deskManager.updateDeskState(id, agent.status);
         }
@@ -102,7 +102,7 @@ export class SceneBridge {
       if (!agents.has(id)) {
         console.warn('[SceneBridge] agent removed from store:', id, 'remaining:', [...agents.keys()]);
         this.toolAnimations.stop(id);
-        deskManager.removeDesk(id);
+        deskManager.despawnAvatar(id);
       }
     }
 

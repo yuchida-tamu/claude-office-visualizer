@@ -12,6 +12,8 @@ class MockDeskManager {
 
   addDesk() {}
   removeDesk() {}
+  spawnAvatar() {}
+  despawnAvatar() {}
   updateDeskState() {}
   getDeskGroup() { return null; }
   getDeskPosition() { return null; }

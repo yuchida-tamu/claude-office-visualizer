@@ -3,10 +3,17 @@ import * as THREE from 'three';
 // ---------------------------------------------------------------------------
 // Slot-based layout for agent desk positioning
 // ---------------------------------------------------------------------------
-// Pre-defines fixed positions in concentric rings. Agents are assigned to
-// the next available slot on spawn, and slots are freed on removal.
-// No parent lookup needed → no overlap regardless of hook data quirks.
+// Slot 0: leader desk at the front-center.
+// Remaining slots: grid rows behind the leader, evenly spaced.
+// Agents are assigned to the next available slot on spawn, and slots are
+// freed on removal.
 // ---------------------------------------------------------------------------
+
+const DESK_SPACING_X = 7; // horizontal distance between desks
+const DESK_SPACING_Z = 6; // depth distance between rows
+const DESKS_PER_ROW = 5;  // desks per grid row
+const LEADER_Z = -12;     // leader desk z position (front)
+const GRID_START_Z = -4;  // first grid row z position (behind leader)
 
 interface Slot {
   index: number;
@@ -17,34 +24,35 @@ export class SlotBasedLayout {
   private slots: Slot[] = [];
   private assignments = new Map<string, number>(); // agentId → slotIndex
   private occupiedSlots = new Set<number>();
+  private nextRowIndex = 0; // tracks how many grid rows have been generated
 
   constructor() {
     this.generateSlots();
   }
 
   private generateSlots(): void {
-    // Slot 0: center
-    this.slots.push({ index: 0, position: new THREE.Vector3(0, 0, 0) });
+    // Slot 0: leader desk at front-center
+    this.slots.push({ index: 0, position: new THREE.Vector3(0, 0, LEADER_Z) });
 
-    // Ring 1: 8 slots at radius 4, evenly spaced
-    this.addRing(4, 8, 0);
-
-    // Ring 2: 12 slots at radius 8, offset by half-step
-    const halfStep = Math.PI / 12; // half of (2π / 12)
-    this.addRing(8, 12, halfStep);
+    // Grid rows behind the leader
+    this.addGridRows(4); // 4 rows × 5 desks = 20 worker slots
   }
 
-  private addRing(radius: number, count: number, angleOffset: number): void {
-    for (let i = 0; i < count; i++) {
-      const angle = angleOffset + (i * Math.PI * 2) / count;
-      this.slots.push({
-        index: this.slots.length,
-        position: new THREE.Vector3(
-          Math.cos(angle) * radius,
-          0,
-          Math.sin(angle) * radius,
-        ),
-      });
+  private addGridRows(rowCount: number): void {
+    for (let r = 0; r < rowCount; r++) {
+      const z = GRID_START_Z + this.nextRowIndex * DESK_SPACING_Z;
+      const totalWidth = (DESKS_PER_ROW - 1) * DESK_SPACING_X;
+      const startX = -totalWidth / 2;
+
+      for (let col = 0; col < DESKS_PER_ROW; col++) {
+        const x = startX + col * DESK_SPACING_X;
+        this.slots.push({
+          index: this.slots.length,
+          position: new THREE.Vector3(x, 0, z),
+        });
+      }
+
+      this.nextRowIndex++;
     }
   }
 
@@ -64,13 +72,10 @@ export class SlotBasedLayout {
       }
     }
 
-    // All pre-defined slots full — generate overflow ring
-    const overflowRingRadius = 12 + (this.slots.length - 21) / 16 * 4;
-    const overflowCount = 16;
-    this.addRing(overflowRingRadius, overflowCount, 0);
+    // All pre-defined slots full — generate overflow row
+    this.addGridRows(1);
 
-    // Assign first new overflow slot
-    const newSlot = this.slots[this.slots.length - overflowCount];
+    const newSlot = this.slots[this.slots.length - DESKS_PER_ROW];
     this.assignments.set(id, newSlot.index);
     this.occupiedSlots.add(newSlot.index);
     return newSlot.position.clone();

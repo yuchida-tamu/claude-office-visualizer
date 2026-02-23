@@ -27,15 +27,29 @@ const STATUS_COLORS: Record<AgentStatus, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Desk instance
+// Pre-rendered desk (static furniture)
+// ---------------------------------------------------------------------------
+
+interface PreRenderedDesk {
+  slotIndex: number;
+  group: THREE.Group;
+  position: THREE.Vector3;
+  monitorMaterial: THREE.MeshStandardMaterial;
+  assignedAgentId: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Desk instance (per-agent, references a PreRenderedDesk)
 // ---------------------------------------------------------------------------
 
 interface DeskInstance {
   group: THREE.Group;
+  slotIndex: number;
   parentId: string | null;
   statusIndicator: THREE.Mesh;
   statusMaterial: THREE.MeshStandardMaterial;
   monitorMaterial: THREE.MeshStandardMaterial;
+  avatarClone: THREE.Group | null;
   parentLine: THREE.Line | null;
   parentLineMaterial: THREE.LineDashedMaterial | null;
   status: AgentStatus;
@@ -55,14 +69,20 @@ interface DeskInstance {
 // ---------------------------------------------------------------------------
 
 /**
- * DeskManager – creates and animates desks representing agents.
- * Uses GLB models for desk and monitor, with procedural status indicator.
+ * DeskManager – manages pre-rendered desks and dynamic agent avatars.
+ *
+ * Desks (desk + chair + monitor) are pre-rendered at slot positions via
+ * initDesks() and remain permanently visible. Avatars spawn/despawn
+ * dynamically with agent lifecycle via spawnAvatar()/despawnAvatar().
  */
 export class DeskManager {
   private scene: THREE.Scene;
   private desks = new Map<string, DeskInstance>();
   private layoutEngine = new SlotBasedLayout();
   private clock = new THREE.Clock();
+
+  // Pre-rendered desk furniture (always visible)
+  private preRenderedDesks: PreRenderedDesk[] = [];
 
   // GLB model templates — loaded once, cloned per desk
   private deskTemplate: THREE.Group | null = null;
@@ -77,7 +97,7 @@ export class DeskManager {
     this.scene = scene;
   }
 
-  /** Load GLB model templates. Must be called before addDesk(). */
+  /** Load GLB model templates. Must be called before initDesks() or addDesk(). */
   async loadModels(): Promise<void> {
     const loader = new GLTFLoader();
     const [deskGLTF, monitorGLTF, chairGLTF, avatarGLTF] = await Promise.all([
@@ -92,7 +112,123 @@ export class DeskManager {
     this.avatarTemplate = avatarGLTF.scene;
   }
 
-  /** Add a new desk for an agent. */
+  // ---------------------------------------------------------------------------
+  // New API: Pre-rendered desks + dynamic avatars
+  // ---------------------------------------------------------------------------
+
+  /** Pre-render desk furniture at slot positions. Always visible. */
+  initDesks(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const slotId = `__desk_slot_${i}`;
+      const pos = this.layoutEngine.addNode(slotId);
+
+      const group = this.buildFurnitureGroup();
+      group.position.copy(pos);
+
+      this.scene.add(group);
+
+      const monitorMat = this.findMonitorMaterial(group);
+
+      this.preRenderedDesks.push({
+        slotIndex: i,
+        group,
+        position: pos,
+        monitorMaterial: monitorMat,
+        assignedAgentId: null,
+      });
+    }
+  }
+
+  /** Assign an agent to a free pre-rendered desk and spawn its avatar. */
+  spawnAvatar(agentId: string, parentId?: string): void {
+    // Idempotent: if agent already has a desk, skip
+    if (this.desks.has(agentId)) return;
+
+    // Find first unoccupied pre-rendered desk
+    const desk = this.preRenderedDesks.find((d) => d.assignedAgentId === null);
+    if (!desk) {
+      console.warn('[DeskMgr] spawnAvatar: no free desks for', agentId);
+      return;
+    }
+
+    desk.assignedAgentId = agentId;
+
+    // Clone avatar model and add to the desk group
+    let avatarClone: THREE.Group | null = null;
+    if (this.avatarTemplate) {
+      avatarClone = this.avatarTemplate.clone();
+      this.prepareClone(avatarClone);
+      desk.group.add(avatarClone);
+    }
+
+    // Add status indicator
+    const statusMat = new THREE.MeshStandardMaterial({
+      color: STATUS_COLORS.spawning,
+      emissive: STATUS_COLORS.spawning,
+      emissiveIntensity: 0.5,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const statusSphere = new THREE.Mesh(this.statusGeo, statusMat);
+    statusSphere.position.set(-0.8, 2.5, 0.8);
+    statusSphere.name = 'status-indicator';
+    desk.group.add(statusSphere);
+
+    // Parent-child line
+    let parentLine: THREE.Line | null = null;
+    let parentLineMaterial: THREE.LineDashedMaterial | null = null;
+    if (parentId && this.desks.has(parentId)) {
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        desk.group.position.clone(),
+        this.desks.get(parentId)!.group.position.clone(),
+      ]);
+      parentLineMaterial = new THREE.LineDashedMaterial({
+        color: 0x60a5fa,
+        dashSize: 0.1,
+        gapSize: 0.05,
+        transparent: true,
+        opacity: 0.6,
+      });
+      parentLine = new THREE.Line(lineGeo, parentLineMaterial);
+      parentLine.computeLineDistances();
+      this.scene.add(parentLine);
+    }
+
+    this.desks.set(agentId, {
+      group: desk.group,
+      slotIndex: desk.slotIndex,
+      parentId: parentId ?? null,
+      statusIndicator: statusSphere,
+      statusMaterial: statusMat,
+      monitorMaterial: desk.monitorMaterial,
+      avatarClone,
+      parentLine,
+      parentLineMaterial,
+      status: 'spawning',
+      spawnProgress: 0,
+      despawning: false,
+      despawnProgress: 0,
+      errorFlashTime: 0,
+      notificationSprite: null,
+      notificationVisible: false,
+      notificationFadeProgress: 0,
+    });
+  }
+
+  /** Remove avatar from desk, freeing the desk for reuse. */
+  despawnAvatar(agentId: string): void {
+    const desk = this.desks.get(agentId);
+    if (!desk || desk.despawning) return;
+    console.warn('[DeskMgr] despawnAvatar: starting despawn for', agentId);
+    desk.despawning = true;
+    desk.despawnProgress = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Legacy API (addDesk/removeDesk) — kept for backward compatibility
+  // ---------------------------------------------------------------------------
+
+  /** Add a new desk for an agent (legacy — creates entire desk group). */
   addDesk(agentId: string, parentId?: string): void {
     // If desk exists and is despawning, cancel the despawn and re-spawn
     const existing = this.desks.get(agentId);
@@ -142,10 +278,12 @@ export class DeskManager {
 
     this.desks.set(agentId, {
       group,
+      slotIndex: -1, // Legacy desks don't use pre-rendered slots
       parentId: parentId ?? null,
       statusIndicator: statusMesh,
       statusMaterial: statusMat,
       monitorMaterial: monitorMat,
+      avatarClone: null,
       parentLine,
       parentLineMaterial,
       status: 'spawning',
@@ -159,7 +297,7 @@ export class DeskManager {
     });
   }
 
-  /** Remove a desk with fade-out animation. */
+  /** Remove a desk with fade-out animation (legacy). */
   removeDesk(agentId: string): void {
     const desk = this.desks.get(agentId);
     if (!desk || desk.despawning) return;
@@ -167,6 +305,10 @@ export class DeskManager {
     desk.despawning = true;
     desk.despawnProgress = 0;
   }
+
+  // ---------------------------------------------------------------------------
+  // Shared API — works for both legacy and new desk/avatar paths
+  // ---------------------------------------------------------------------------
 
   /** Update desk state (status indicator). */
   updateDeskState(agentId: string, status: AgentStatus): void {
@@ -241,30 +383,49 @@ export class DeskManager {
     const time = this.clock.getElapsedTime();
 
     for (const [agentId, desk] of this.desks.entries()) {
-      // Update position from layout engine
-      const layoutPos = this.layoutEngine.getPosition(agentId);
-      if (layoutPos) {
-        desk.group.position.x = layoutPos.x;
-        desk.group.position.z = layoutPos.z;
-      }
+      const isPreRendered = desk.slotIndex >= 0;
 
-      // Spawn animation
-      if (desk.spawnProgress < 1) {
-        desk.spawnProgress = Math.min(desk.spawnProgress + deltaTime * 2, 1);
-        // Ease-out cubic
-        const t = 1 - Math.pow(1 - desk.spawnProgress, 3);
-        desk.group.scale.setScalar(t);
-      }
+      if (!isPreRendered) {
+        // Legacy path: update position from layout engine
+        const layoutPos = this.layoutEngine.getPosition(agentId);
+        if (layoutPos) {
+          desk.group.position.x = layoutPos.x;
+          desk.group.position.z = layoutPos.z;
+        }
 
-      // Despawn animation
-      if (desk.despawning) {
-        desk.despawnProgress = Math.min(desk.despawnProgress + deltaTime * 2, 1);
-        const t = 1 - desk.despawnProgress;
-        desk.group.scale.setScalar(t);
+        // Legacy: spawn animation on whole group
+        if (desk.spawnProgress < 1) {
+          desk.spawnProgress = Math.min(desk.spawnProgress + deltaTime * 2, 1);
+          const t = 1 - Math.pow(1 - desk.spawnProgress, 3);
+          desk.group.scale.setScalar(t);
+        }
 
-        if (desk.despawnProgress >= 1) {
-          this.cleanupDesk(agentId, desk);
-          continue;
+        // Legacy: despawn animation on whole group
+        if (desk.despawning) {
+          desk.despawnProgress = Math.min(desk.despawnProgress + deltaTime * 2, 1);
+          const t = 1 - desk.despawnProgress;
+          desk.group.scale.setScalar(t);
+
+          if (desk.despawnProgress >= 1) {
+            this.cleanupLegacyDesk(agentId, desk);
+            continue;
+          }
+        }
+      } else {
+        // New path: avatar-only spawn/despawn animation
+        if (desk.despawning) {
+          desk.despawnProgress = Math.min(desk.despawnProgress + deltaTime * 2, 1);
+
+          // Scale down avatar only
+          if (desk.avatarClone) {
+            const t = 1 - desk.despawnProgress;
+            desk.avatarClone.scale.setScalar(t);
+          }
+
+          if (desk.despawnProgress >= 1) {
+            this.cleanupAvatar(agentId, desk);
+            continue;
+          }
         }
       }
 
@@ -348,18 +509,62 @@ export class DeskManager {
   dispose(): void {
     console.warn('[DeskMgr] dispose: cleaning up', this.desks.size, 'desks');
     for (const [agentId, desk] of this.desks.entries()) {
-      this.cleanupDesk(agentId, desk);
+      if (desk.slotIndex >= 0) {
+        this.cleanupAvatar(agentId, desk);
+      } else {
+        this.cleanupLegacyDesk(agentId, desk);
+      }
     }
+
+    // Cleanup pre-rendered desk groups
+    for (const prd of this.preRenderedDesks) {
+      this.scene.remove(prd.group);
+      prd.group.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (mesh.material instanceof THREE.Material) {
+            mesh.material.dispose();
+          }
+        }
+      });
+    }
+    this.preRenderedDesks = [];
 
     // Dispose shared status geometry
     this.statusGeo.dispose();
   }
 
   // ---------------------------------------------------------------------------
-  // Private
+  // Private — building groups
   // ---------------------------------------------------------------------------
 
-  private buildDeskGroup(agentId: string): THREE.Group {
+  /** Build a furniture-only group (desk + chair + monitor, NO avatar or status indicator). */
+  private buildFurnitureGroup(): THREE.Group {
+    const group = new THREE.Group();
+
+    if (this.deskTemplate) {
+      const deskClone = this.deskTemplate.clone();
+      this.prepareClone(deskClone);
+      group.add(deskClone);
+    }
+
+    if (this.monitorTemplate) {
+      const monitorClone = this.monitorTemplate.clone();
+      this.prepareClone(monitorClone);
+      group.add(monitorClone);
+    }
+
+    if (this.chairTemplate) {
+      const chairClone = this.chairTemplate.clone();
+      this.prepareClone(chairClone);
+      group.add(chairClone);
+    }
+
+    return group;
+  }
+
+  /** Build a full desk group with all elements (legacy — used by addDesk). */
+  private buildDeskGroup(_agentId: string): THREE.Group {
     const group = new THREE.Group();
 
     // Clone desk model
@@ -423,10 +628,10 @@ export class DeskManager {
   }
 
   /**
-   * Find the monitor screen material from the desk group.
+   * Find the monitor screen material from a group.
    * Looks for a mesh named 'monitor-screen' first, then falls back to
    * the first MeshStandardMaterial with an emissive property found in
-   * the monitor clone. If nothing is found, returns a dummy material.
+   * the group. If nothing is found, returns a dummy material.
    */
   private findMonitorMaterial(group: THREE.Group): THREE.MeshStandardMaterial {
     // Try named mesh first
@@ -462,6 +667,97 @@ export class DeskManager {
     if (!desk?.parentId) return null;
     return this.desks.get(desk.parentId) ?? null;
   }
+
+  // ---------------------------------------------------------------------------
+  // Private — cleanup
+  // ---------------------------------------------------------------------------
+
+  /** Clean up avatar-related objects from a pre-rendered desk. */
+  private cleanupAvatar(agentId: string, desk: DeskInstance): void {
+    console.warn('[DeskMgr] cleanupAvatar: removing avatar for', agentId);
+
+    // Remove notification sprite
+    if (desk.notificationSprite) {
+      desk.group.remove(desk.notificationSprite);
+      (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
+      (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
+      desk.notificationSprite = null;
+    }
+
+    // Remove avatar clone from desk group
+    if (desk.avatarClone) {
+      desk.group.remove(desk.avatarClone);
+      desk.avatarClone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (mesh.material instanceof THREE.Material) {
+            mesh.material.dispose();
+          }
+        }
+      });
+      desk.avatarClone = null;
+    }
+
+    // Remove status indicator
+    const statusMesh = desk.group.getObjectByName('status-indicator');
+    if (statusMesh) {
+      desk.group.remove(statusMesh);
+      desk.statusMaterial.dispose();
+    }
+
+    // Remove parent line
+    if (desk.parentLine) {
+      this.scene.remove(desk.parentLine);
+      desk.parentLine.geometry.dispose();
+      desk.parentLineMaterial?.dispose();
+    }
+
+    // Free the pre-rendered desk
+    const prd = this.preRenderedDesks.find((d) => d.slotIndex === desk.slotIndex);
+    if (prd) {
+      prd.assignedAgentId = null;
+    }
+
+    this.desks.delete(agentId);
+  }
+
+  /** Clean up a legacy desk (removes entire group from scene). */
+  private cleanupLegacyDesk(agentId: string, desk: DeskInstance): void {
+    console.warn('[DeskMgr] cleanupDesk: fully removing', agentId);
+
+    // Dispose notification sprite if present
+    if (desk.notificationSprite) {
+      desk.group.remove(desk.notificationSprite);
+      (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
+      (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
+      desk.notificationSprite = null;
+    }
+
+    this.scene.remove(desk.group);
+
+    // Dispose desk-specific materials
+    desk.group.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (mesh.material instanceof THREE.Material) {
+          mesh.material.dispose();
+        }
+      }
+    });
+
+    if (desk.parentLine) {
+      this.scene.remove(desk.parentLine);
+      desk.parentLine.geometry.dispose();
+      desk.parentLineMaterial?.dispose();
+    }
+
+    this.layoutEngine.removeNode(agentId);
+    this.desks.delete(agentId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private — notification rendering
+  // ---------------------------------------------------------------------------
 
   private buildNotificationSprite(
     type: 'notification' | 'permission_request' | null,
@@ -543,38 +839,5 @@ export class DeskManager {
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
-  }
-
-  private cleanupDesk(agentId: string, desk: DeskInstance): void {
-    console.warn('[DeskMgr] cleanupDesk: fully removing', agentId);
-
-    // Dispose notification sprite if present
-    if (desk.notificationSprite) {
-      desk.group.remove(desk.notificationSprite);
-      (desk.notificationSprite.material as THREE.SpriteMaterial).map?.dispose();
-      (desk.notificationSprite.material as THREE.SpriteMaterial).dispose();
-      desk.notificationSprite = null;
-    }
-
-    this.scene.remove(desk.group);
-
-    // Dispose desk-specific materials
-    desk.group.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        if (mesh.material instanceof THREE.Material) {
-          mesh.material.dispose();
-        }
-      }
-    });
-
-    if (desk.parentLine) {
-      this.scene.remove(desk.parentLine);
-      desk.parentLine.geometry.dispose();
-      desk.parentLineMaterial?.dispose();
-    }
-
-    this.layoutEngine.removeNode(agentId);
-    this.desks.delete(agentId);
   }
 }

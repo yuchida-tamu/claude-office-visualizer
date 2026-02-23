@@ -85,6 +85,9 @@ export class SceneManager {
       this.toolAnimationManager.loadModels(),
     ]);
 
+    // Pre-render 20 desks at slot positions (always visible)
+    this.deskManager.initDesks(20);
+
     // Resize observer
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);

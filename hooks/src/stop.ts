@@ -3,8 +3,9 @@
  * Fires when the agent stops (session ends or is interrupted).
  */
 import type { SessionEndedEvent } from '@shared/events';
+import { resolveServerUrl } from './url';
 
-const SERVER_URL = `http://localhost:${process.env.VISUALIZER_PORT || 3333}/api/events`;
+const SERVER_URL = resolveServerUrl();
 
 async function main() {
   try {

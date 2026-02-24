@@ -4,8 +4,9 @@
  * Also detects Task/SendMessage tool calls to emit MessageSent events.
  */
 import type { ToolCallCompletedEvent, MessageSentEvent } from '@shared/events';
+import { resolveServerUrl } from './url';
 
-const SERVER_URL = `http://localhost:${process.env.VISUALIZER_PORT || 3333}/api/events`;
+const SERVER_URL = resolveServerUrl();
 
 async function main() {
   try {

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+hooks/dist/
 *.db
 *.db-wal
 *.db-shm

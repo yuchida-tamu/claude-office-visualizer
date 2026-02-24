@@ -1,7 +1,28 @@
 import { Database } from 'bun:sqlite';
+import { dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
 
-export function initDatabase(path = 'visualizer.db'): Database {
-  const db = new Database(path);
+/**
+ * Resolve the database file path from explicit argument, env var, or default.
+ *
+ * Priority: explicit path > CLAUDE_VISUALIZER_DB env var > 'visualizer.db' (CWD)
+ */
+export function resolveDatabasePath(explicitPath?: string): string {
+  if (explicitPath) return explicitPath;
+  if (process.env.CLAUDE_VISUALIZER_DB) return process.env.CLAUDE_VISUALIZER_DB;
+  return 'visualizer.db';
+}
+
+export function initDatabase(path?: string): Database {
+  const dbPath = resolveDatabasePath(path);
+
+  // Ensure parent directory exists for non-memory, non-CWD paths
+  const dir = dirname(dbPath);
+  if (dir !== '.' && dbPath !== ':memory:') {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const db = new Database(dbPath);
   db.run('PRAGMA journal_mode = WAL');
   db.run('PRAGMA synchronous = NORMAL');
 

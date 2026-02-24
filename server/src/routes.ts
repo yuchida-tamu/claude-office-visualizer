@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { WebSocketHandler } from './websocket';
 import { validateEvent } from './validation';
 import { insertEvent, getEvents, getEventById, getSessions, getEventCount } from './database';
+import { serveStatic } from './static';
 import type { ServerMessage } from '@shared/messages';
 
 const CORS_HEADERS = {
@@ -16,6 +17,7 @@ export async function handleRequest(
   req: Request,
   db: Database,
   ws: WebSocketHandler,
+  clientDir?: string | null,
 ): Promise<Response> {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -56,6 +58,12 @@ export async function handleRequest(
   // GET /api/sessions — list distinct sessions
   if (req.method === 'GET' && path === '/api/sessions') {
     return json(getSessions(db));
+  }
+
+  // Static file serving (production mode) — only for non-API routes
+  if (clientDir && !path.startsWith('/api/')) {
+    const staticResponse = await serveStatic(path, clientDir);
+    if (staticResponse) return staticResponse;
   }
 
   return new Response('Not Found', { status: 404, headers: CORS_HEADERS });

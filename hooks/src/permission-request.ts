@@ -3,8 +3,9 @@
  * Fires when Claude Code requests a permission from the user.
  */
 import type { WaitingForUserEvent } from '@shared/events';
+import { resolveServerUrl } from './url';
 
-const SERVER_URL = `http://localhost:${process.env.VISUALIZER_PORT || 3333}/api/events`;
+const SERVER_URL = resolveServerUrl();
 
 async function main() {
   try {

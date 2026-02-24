@@ -1,23 +1,23 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
 
 // ---------------------------------------------------------------------------
-// Mock THREE.js and GLTFLoader
+// THREE is mocked globally via preload (setup.ts). Only GLTFLoader needs a
+// per-file mock because this test controls what model scene is returned.
 // ---------------------------------------------------------------------------
 
-// Track what gets added to the scene
-let sceneChildren: unknown[] = [];
-let disposeCallCount = 0;
+const THREE = await import('three');
 
-// Mock mesh for traversal
+// Simple mock mesh for shadow traversal testing
 class MockMesh {
   isMesh = true;
   receiveShadow = false;
   castShadow = false;
-  geometry = { dispose: () => { disposeCallCount++; } };
-  material = { dispose: () => { disposeCallCount++; } };
+  geometry = { dispose: () => {} };
+  material = { dispose: () => {} };
 }
 
-class MockGroup {
+// Simple mock group for the loaded model (needs removeFromParent for dispose)
+class MockModelGroup {
   children: unknown[] = [];
   traverse(fn: (obj: unknown) => void) {
     fn(this);
@@ -29,44 +29,12 @@ class MockGroup {
 }
 
 // The loaded model scene
-let mockModelScene: MockGroup;
-
-mock.module('three', () => {
-  const AmbientLight = class {
-    constructor(public color: number, public intensity: number) {}
-  };
-  const DirectionalLight = class {
-    position = { set: () => {} };
-    castShadow = false;
-    shadow = {
-      mapSize: { width: 0, height: 0 },
-      camera: { near: 0, far: 0, left: 0, right: 0, top: 0, bottom: 0 },
-      bias: 0,
-    };
-    constructor(public color: number, public intensity: number) {}
-  };
-  const HemisphereLight = class {
-    constructor(public skyColor: number, public groundColor: number, public intensity: number) {}
-  };
-
-  return {
-    Scene: class {
-      add(obj: unknown) { sceneChildren.push(obj); }
-      remove(obj: unknown) {
-        const idx = sceneChildren.indexOf(obj);
-        if (idx >= 0) sceneChildren.splice(idx, 1);
-      }
-    },
-    AmbientLight,
-    DirectionalLight,
-    HemisphereLight,
-  };
-});
+let mockModelScene: MockModelGroup;
 
 mock.module('three/addons/loaders/GLTFLoader.js', () => {
   return {
     GLTFLoader: class {
-      loadAsync(url: string) {
+      loadAsync(_url: string) {
         return Promise.resolve({ scene: mockModelScene });
       }
     },
@@ -75,7 +43,6 @@ mock.module('three/addons/loaders/GLTFLoader.js', () => {
 
 // Must import after mocks are registered
 const { OfficeEnvironment } = await import('../scene/OfficeEnvironment');
-const THREE = await import('three');
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -83,19 +50,18 @@ const THREE = await import('three');
 
 describe('OfficeEnvironment', () => {
   let scene: InstanceType<typeof THREE.Scene>;
+  let sceneChildren: unknown[];
   let env: InstanceType<typeof OfficeEnvironment>;
 
   beforeEach(() => {
-    sceneChildren = [];
-    disposeCallCount = 0;
-
     // Create a mock model with 2 meshes
-    mockModelScene = new MockGroup();
+    mockModelScene = new MockModelGroup();
     const mesh1 = new MockMesh();
     const mesh2 = new MockMesh();
     mockModelScene.children = [mesh1, mesh2];
 
     scene = new THREE.Scene();
+    sceneChildren = (scene as any).children;
     env = new OfficeEnvironment(scene);
   });
 
@@ -118,16 +84,17 @@ describe('OfficeEnvironment', () => {
     expect(mesh2.castShadow).toBe(true);
   });
 
-  test('init creates 3 lights (ambient, directional, hemisphere)', async () => {
+  test('init creates 13 lights (ambient, hemisphere, 2 directional, 9 point)', async () => {
     await env.init();
 
     const lights = sceneChildren.filter(
       (c) =>
         c instanceof THREE.AmbientLight ||
         c instanceof THREE.DirectionalLight ||
-        c instanceof THREE.HemisphereLight,
+        c instanceof THREE.HemisphereLight ||
+        c instanceof THREE.PointLight,
     );
-    expect(lights.length).toBe(3);
+    expect(lights.length).toBe(13);
   });
 
   test('does not create procedural floor, grid, or wall geometry', async () => {
@@ -138,7 +105,8 @@ describe('OfficeEnvironment', () => {
       (c) =>
         !(c instanceof THREE.AmbientLight) &&
         !(c instanceof THREE.DirectionalLight) &&
-        !(c instanceof THREE.HemisphereLight),
+        !(c instanceof THREE.HemisphereLight) &&
+        !(c instanceof THREE.PointLight),
     );
     expect(nonLights.length).toBe(1); // just the model group
     expect(nonLights[0]).toBe(mockModelScene);

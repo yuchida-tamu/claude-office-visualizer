@@ -1,107 +1,41 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
 
 // ---------------------------------------------------------------------------
-// Mock THREE.js and GLTFLoader
+// THREE is mocked globally via preload (setup.ts). Only GLTFLoader needs a
+// per-file mock because this test controls what templates are returned for
+// desk.glb vs monitor.glb.
 // ---------------------------------------------------------------------------
 
-let sceneChildren: unknown[] = [];
+const THREE = await import('three');
 
-class MockVector3 {
-  constructor(public x = 0, public y = 0, public z = 0) {}
-  copy(v: MockVector3) { this.x = v.x; this.y = v.y; this.z = v.z; return this; }
-  clone() { return new MockVector3(this.x, this.y, this.z); }
-  set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; return this; }
-  setScalar(s: number) { this.x = s; this.y = s; this.z = s; return this; }
-}
+// Alias the preloaded mock classes for convenience
+type MockGroup = InstanceType<typeof THREE.Group>;
+type MockMesh = InstanceType<typeof THREE.Mesh>;
 
-class MockMesh {
-  isMesh = true;
-  position = new MockVector3();
-  name = '';
-  material: Record<string, unknown> = {};
-  castShadow = false;
-  receiveShadow = false;
-  geometry = { dispose: () => {} };
-  constructor(name = '') { this.name = name; }
-}
+// Track scene children via the scene instance (preloaded Scene mock has .children)
+let scene: InstanceType<typeof THREE.Scene>;
 
-class MockGroup {
-  children: unknown[] = [];
-  position = new MockVector3();
-  scale = new MockVector3(1, 1, 1);
-  rotation = { x: 0, y: 0, z: 0 };
-  name = '';
-  parent: MockGroup | null = null;
-
-  add(obj: unknown) {
-    this.children.push(obj);
-    if (typeof obj === 'object' && obj !== null) (obj as MockGroup).parent = this;
-  }
-  remove(obj: unknown) {
-    const idx = this.children.indexOf(obj);
-    if (idx >= 0) this.children.splice(idx, 1);
-  }
-  traverse(fn: (obj: unknown) => void) {
-    fn(this);
-    for (const child of this.children) {
-      fn(child);
-      if ((child as MockGroup).children) {
-        for (const grandchild of (child as MockGroup).children) {
-          fn(grandchild);
-        }
-      }
-    }
-  }
-  getObjectByName(name: string): unknown {
-    if (this.name === name) return this;
-    for (const child of this.children) {
-      if ((child as MockMesh).name === name) return child;
-      if ((child as MockGroup).getObjectByName) {
-        const found = (child as MockGroup).getObjectByName(name);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-  clone(): MockGroup {
-    const c = new MockGroup();
-    c.name = this.name;
-    c.position = this.position.clone();
-    for (const child of this.children) {
-      if ((child as MockMesh).isMesh) {
-        const m = new MockMesh((child as MockMesh).name);
-        m.material = {
-          color: { setHex: () => {} },
-          emissive: { setHex: () => {} },
-          emissiveIntensity: 0.5,
-        };
-        c.add(m);
-      } else if ((child as MockGroup).clone) {
-        c.add((child as MockGroup).clone());
-      }
-    }
-    return c;
-  }
-}
-
-// Build model templates
+// Build model templates using the preloaded mock classes
 function buildDeskTemplate(): MockGroup {
-  const g = new MockGroup();
-  const mesh1 = new MockMesh('desk-surface');
-  const mesh2 = new MockMesh('chair');
+  const g = new THREE.Group();
+  const mesh1 = new THREE.Mesh();
+  mesh1.name = 'desk-surface';
+  const mesh2 = new THREE.Mesh();
+  mesh2.name = 'chair';
   g.add(mesh1);
   g.add(mesh2);
   return g;
 }
 
 function buildMonitorTemplate(): MockGroup {
-  const g = new MockGroup();
-  const screen = new MockMesh('monitor-screen');
+  const g = new THREE.Group();
+  const screen = new THREE.Mesh();
+  screen.name = 'monitor-screen';
   screen.material = {
     color: { setHex: () => {} },
     emissive: { setHex: () => {} },
     emissiveIntensity: 0.4,
-  };
+  } as any;
   g.add(screen);
   return g;
 }
@@ -109,94 +43,33 @@ function buildMonitorTemplate(): MockGroup {
 let deskTemplate: MockGroup;
 let monitorTemplate: MockGroup;
 
-mock.module('three', () => {
-  return {
-    Vector3: MockVector3,
-    Group: MockGroup,
-    Color: class { setHSL() { return this; } getHex() { return 0xffffff; } },
-    SphereGeometry: class { dispose() {} },
-    Clock: class { getElapsedTime() { return 0; } },
-    Mesh: class {
-      isMesh = true;
-      position = new MockVector3();
-      name = '';
-      material: Record<string, unknown> = {};
-      castShadow = false;
-      receiveShadow = false;
-      geometry = { dispose: () => {} };
-      constructor(_geo?: unknown, mat?: unknown) {
-        if (mat) this.material = mat as Record<string, unknown>;
-      }
-    },
-    MeshStandardMaterial: class {
-      color = { setHex: () => {} };
-      emissive = { setHex: () => {} };
-      emissiveIntensity = 0.5;
-      transparent = false;
-      opacity = 1;
-      clone() {
-        const c = new (this.constructor as new () => typeof this)();
-        return c;
-      }
-      dispose() {}
-    },
-    BufferGeometry: class {
-      setFromPoints() { return this; }
-      attributes = { position: { setXYZ: () => {}, needsUpdate: false } };
-      dispose() {}
-    },
-    LineDashedMaterial: class { dispose() {} },
-    Line: class {
-      geometry = { attributes: { position: { setXYZ: () => {}, needsUpdate: false } }, dispose: () => {} };
-      computeLineDistances() {}
-    },
-    SpriteMaterial: class { map = null; dispose() {} },
-    Sprite: class {
-      material = { map: null, dispose: () => {} };
-      position = new MockVector3();
-      scale = new MockVector3();
-      name = '';
-    },
-    DataTexture: class { needsUpdate = false; },
-    CanvasTexture: class { needsUpdate = false; },
-    RGBAFormat: 0,
-    Material: class { dispose() {} },
-    DoubleSide: 2,
-    Scene: class {
-      add(obj: unknown) { sceneChildren.push(obj); }
-      remove(obj: unknown) {
-        const idx = sceneChildren.indexOf(obj);
-        if (idx >= 0) sceneChildren.splice(idx, 1);
-      }
-    },
-  };
-});
-
 mock.module('three/addons/loaders/GLTFLoader.js', () => {
   return {
     GLTFLoader: class {
       loadAsync(url: string) {
         if (url.includes('desk')) return Promise.resolve({ scene: deskTemplate });
         if (url.includes('monitor')) return Promise.resolve({ scene: monitorTemplate });
-        return Promise.resolve({ scene: new MockGroup() });
+        return Promise.resolve({ scene: new THREE.Group() });
       }
     },
   };
 });
 
 const { DeskManager } = await import('../scene/DeskManager');
-const THREE = await import('three');
+
+// Helper to read the scene children array from the preloaded mock Scene
+function getSceneChildren(): unknown[] {
+  return (scene as any).children;
+}
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('DeskManager GLB models', () => {
-  let scene: InstanceType<typeof THREE.Scene>;
   let dm: InstanceType<typeof DeskManager>;
 
   beforeEach(async () => {
-    sceneChildren = [];
     deskTemplate = buildDeskTemplate();
     monitorTemplate = buildMonitorTemplate();
     scene = new THREE.Scene();
@@ -248,14 +121,15 @@ describe('DeskManager GLB models', () => {
 
   test('addDesk works even when monitor model has no mesh named "monitor-screen"', async () => {
     // Build a monitor template with a differently-named mesh
-    const altMonitor = new MockGroup();
-    const screen = new MockMesh('Screen_001');
+    const altMonitor = new THREE.Group();
+    const screen = new THREE.Mesh();
+    screen.name = 'Screen_001';
     screen.material = {
       color: { setHex: () => {} },
       emissive: { setHex: () => {} },
       emissiveIntensity: 0.4,
       clone() { return { ...this }; },
-    };
+    } as any;
     altMonitor.add(screen);
 
     monitorTemplate = altMonitor;
@@ -278,11 +152,9 @@ describe('DeskManager GLB models', () => {
 // ---------------------------------------------------------------------------
 
 describe('DeskManager desk/avatar separation', () => {
-  let scene: InstanceType<typeof THREE.Scene>;
   let dm: InstanceType<typeof DeskManager>;
 
   beforeEach(async () => {
-    sceneChildren = [];
     deskTemplate = buildDeskTemplate();
     monitorTemplate = buildMonitorTemplate();
     scene = new THREE.Scene();
@@ -296,12 +168,12 @@ describe('DeskManager desk/avatar separation', () => {
     test('pre-renders the requested number of desks into the scene', () => {
       dm.initDesks(5);
       // 5 desk groups should be added to the scene
-      expect(sceneChildren.length).toBe(5);
+      expect(getSceneChildren().length).toBe(5);
     });
 
     test('pre-rendered desks contain desk and monitor meshes but no avatar or status indicator', () => {
       dm.initDesks(1);
-      const deskGroup = sceneChildren[0] as MockGroup;
+      const deskGroup = getSceneChildren()[0] as MockGroup;
       // Should have desk-surface and monitor-screen from templates
       expect(deskGroup.getObjectByName('desk-surface')).not.toBeNull();
       expect(deskGroup.getObjectByName('monitor-screen')).not.toBeNull();
@@ -311,7 +183,7 @@ describe('DeskManager desk/avatar separation', () => {
 
     test('pre-rendered desks are at full scale (not animated)', () => {
       dm.initDesks(3);
-      for (const child of sceneChildren) {
+      for (const child of getSceneChildren()) {
         const group = child as MockGroup;
         expect(group.scale.x).toBe(1);
         expect(group.scale.y).toBe(1);
@@ -321,7 +193,7 @@ describe('DeskManager desk/avatar separation', () => {
 
     test('pre-rendered desks are positioned at distinct slot positions', () => {
       dm.initDesks(3);
-      const positions = sceneChildren.map((c) => {
+      const positions = getSceneChildren().map((c) => {
         const g = c as MockGroup;
         return `${g.position.x},${g.position.z}`;
       });
@@ -416,12 +288,12 @@ describe('DeskManager desk/avatar separation', () => {
 
     test('desk furniture remains in the scene after avatar despawn', () => {
       dm.initDesks(5);
-      const initialSceneCount = sceneChildren.length;
+      const initialSceneCount = getSceneChildren().length;
       dm.spawnAvatar('agent-1');
       dm.despawnAvatar('agent-1');
       dm.update(10);
       // Scene should still have the same number of desk groups (furniture persists)
-      expect(sceneChildren.length).toBe(initialSceneCount);
+      expect(getSceneChildren().length).toBe(initialSceneCount);
     });
 
     test('freed desk can be reused by a new agent', () => {
@@ -478,18 +350,173 @@ describe('DeskManager desk/avatar separation', () => {
   describe('scene invariant', () => {
     test('initDesks adds groups to scene, spawn/despawn does not change scene child count', () => {
       dm.initDesks(3);
-      const afterInit = sceneChildren.length;
+      const afterInit = getSceneChildren().length;
       expect(afterInit).toBe(3);
 
       dm.spawnAvatar('agent-1');
       // No new groups added to scene (avatar goes into existing desk group)
       // Parent lines may be added, so check only desk groups
-      expect(sceneChildren.filter(c => c instanceof MockGroup).length).toBeGreaterThanOrEqual(3);
+      expect(getSceneChildren().filter(c => c instanceof THREE.Group).length).toBeGreaterThanOrEqual(3);
 
       dm.despawnAvatar('agent-1');
       dm.update(10);
       // Desk groups remain
-      expect(sceneChildren.filter(c => c instanceof MockGroup).length).toBeGreaterThanOrEqual(3);
+      expect(getSceneChildren().filter(c => c instanceof THREE.Group).length).toBeGreaterThanOrEqual(3);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Notification Popup Tests
+// ---------------------------------------------------------------------------
+
+describe('DeskManager notification popup', () => {
+  let dm: InstanceType<typeof DeskManager>;
+
+  function addDeskAndSpawn(agentId = 'agent-1'): void {
+    dm.addDesk(agentId);
+    dm.update(1.0);
+  }
+
+  beforeEach(async () => {
+    deskTemplate = buildDeskTemplate();
+    monitorTemplate = buildMonitorTemplate();
+    scene = new THREE.Scene();
+    dm = new DeskManager(scene);
+    await dm.loadModels();
+  });
+
+  describe('showNotification()', () => {
+    test('adds a notification sprite to the desk group', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup');
+      expect(sprite).toBeDefined();
+      expect(sprite).toBeInstanceOf(THREE.Sprite);
+    });
+
+    test('positions notification sprite above status indicator (y >= 2.0)', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      expect(sprite.position.y).toBeGreaterThanOrEqual(2.0);
+    });
+
+    test('scales notification sprite to readable size', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      expect(sprite.scale.x).toBeGreaterThan(1.0);
+      expect(sprite.scale.y).toBeGreaterThan(0.2);
+    });
+
+    test('sprite material starts with opacity 0 for fade-in', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      const material = sprite.material as InstanceType<typeof THREE.SpriteMaterial>;
+      expect(material.opacity).toBe(0);
+      expect(material.transparent).toBe(true);
+    });
+
+    test('no-ops for unknown agent', () => {
+      expect(() => dm.showNotification('nonexistent', 'notification', 'hi')).not.toThrow();
+    });
+
+    test('replaces existing notification if called again', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'First');
+      dm.showNotification('agent-1', 'permission_request', 'Second');
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprites = (group as unknown as MockGroup).children.filter(
+        (c) => (c as { name?: string }).name === 'notification-popup',
+      );
+      expect(sprites.length).toBe(1);
+    });
+  });
+
+  describe('hideNotification()', () => {
+    test('starts fade-out on the notification sprite', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(1.0);
+      dm.hideNotification('agent-1');
+      dm.update(0.5);
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      if (sprite) {
+        const material = sprite.material as InstanceType<typeof THREE.SpriteMaterial>;
+        expect(material.opacity).toBeLessThan(1);
+      }
+    });
+
+    test('removes sprite after fade-out completes', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(1.0);
+      dm.hideNotification('agent-1');
+      dm.update(2.0);
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup');
+      expect(sprite).toBeNull();
+    });
+
+    test('no-ops for unknown agent', () => {
+      expect(() => dm.hideNotification('nonexistent')).not.toThrow();
+    });
+
+    test('no-ops if no notification is showing', () => {
+      addDeskAndSpawn();
+      expect(() => dm.hideNotification('agent-1')).not.toThrow();
+    });
+  });
+
+  describe('update() notification animation', () => {
+    test('fade-in: opacity increases from 0 toward 1 over time', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(0.3);
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      const material = sprite.material as InstanceType<typeof THREE.SpriteMaterial>;
+      expect(material.opacity).toBeGreaterThan(0);
+    });
+
+    test('fade-in: opacity reaches 1 after enough time', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(2.0);
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      const material = sprite.material as InstanceType<typeof THREE.SpriteMaterial>;
+      expect(material.opacity).toBe(1);
+    });
+
+    test('gentle bob: sprite y position oscillates over time', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(1.0);
+      const group = dm.getDeskGroup('agent-1')!;
+      const sprite = group.getObjectByName('notification-popup') as InstanceType<typeof THREE.Sprite>;
+      const y1 = sprite.position.y;
+      dm.update(0.5);
+      const y2 = sprite.position.y;
+      expect(y1).not.toBe(y2);
+    });
+  });
+
+  describe('cleanupDesk disposes notification', () => {
+    test('notification sprite is removed when desk is cleaned up via despawn', () => {
+      addDeskAndSpawn();
+      dm.showNotification('agent-1', 'notification', 'Needs input');
+      dm.update(1.0);
+      dm.removeDesk('agent-1');
+      dm.update(2.0);
+      expect(dm.getDeskGroup('agent-1')).toBeNull();
     });
   });
 });

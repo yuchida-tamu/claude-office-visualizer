@@ -19,19 +19,19 @@ describe('SlotBasedLayout', () => {
   // Slot 0: leader at front-center
   // -----------------------------------------------------------------------
 
-  test('first slot (leader) is at front-center (0, 0, 0)', () => {
+  test('first slot (leader) is at front-center (0, 0, -12)', () => {
     const layout = new SlotBasedLayout();
     const pos = layout.addNode('root');
     expect(pos.x).toBe(0);
     expect(pos.y).toBe(0);
-    expect(pos.z).toBe(0);
+    expect(pos.z).toBe(-12);
   });
 
   // -----------------------------------------------------------------------
   // addNode returns a position
   // -----------------------------------------------------------------------
 
-  test('addNode returns a Vector3 position', () => {
+  test('addNode returns a position object with x, y, z', () => {
     const layout = new SlotBasedLayout();
     const pos = layout.addNode('agent-1');
     expect(pos).toBeDefined();
@@ -161,11 +161,11 @@ describe('SlotBasedLayout', () => {
   // Grid geometry
   // -----------------------------------------------------------------------
 
-  test('grid row 1 slots are behind the leader (z > 0)', () => {
+  test('grid row 1 slots are behind the leader (z > leader z)', () => {
     const layout = new SlotBasedLayout();
-    layout.addNode('root'); // slot 0 (leader)
+    const leaderPos = layout.addNode('root'); // slot 0 (leader)
     const row1Pos = layout.addNode('row1-agent'); // slot 1
-    expect(row1Pos.z).toBeGreaterThan(0);
+    expect(row1Pos.z).toBeGreaterThan(leaderPos.z);
   });
 
   test('grid rows are spaced evenly in z', () => {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { AgentStatus } from '@shared/agent';
-import { SlotBasedLayout } from './SlotBasedLayout';
+import { SlotBasedLayout, type SlotPosition } from './SlotBasedLayout';
 
 // ---------------------------------------------------------------------------
 // Model URLs
@@ -33,7 +33,7 @@ const STATUS_COLORS: Record<AgentStatus, number> = {
 interface PreRenderedDesk {
   slotIndex: number;
   group: THREE.Group;
-  position: THREE.Vector3;
+  position: SlotPosition;
   monitorMaterial: THREE.MeshStandardMaterial;
   assignedAgentId: string | null;
 }

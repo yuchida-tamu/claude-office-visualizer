@@ -1,5 +1,3 @@
-import * as THREE from 'three';
-
 // ---------------------------------------------------------------------------
 // Slot-based layout for agent desk positioning
 // ---------------------------------------------------------------------------
@@ -15,9 +13,15 @@ const DESKS_PER_ROW = 5;  // desks per grid row
 const LEADER_Z = -12;     // leader desk z position (front)
 const GRID_START_Z = -4;  // first grid row z position (behind leader)
 
+export interface SlotPosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
 interface Slot {
   index: number;
-  position: THREE.Vector3;
+  position: SlotPosition;
 }
 
 export class SlotBasedLayout {
@@ -32,7 +36,7 @@ export class SlotBasedLayout {
 
   private generateSlots(): void {
     // Slot 0: leader desk at front-center
-    this.slots.push({ index: 0, position: new THREE.Vector3(0, 0, LEADER_Z) });
+    this.slots.push({ index: 0, position: { x: 0, y: 0, z: LEADER_Z } });
 
     // Grid rows behind the leader
     this.addGridRows(4); // 4 rows × 5 desks = 20 worker slots
@@ -48,7 +52,7 @@ export class SlotBasedLayout {
         const x = startX + col * DESK_SPACING_X;
         this.slots.push({
           index: this.slots.length,
-          position: new THREE.Vector3(x, 0, z),
+          position: { x, y: 0, z },
         });
       }
 
@@ -56,11 +60,12 @@ export class SlotBasedLayout {
     }
   }
 
-  addNode(id: string): THREE.Vector3 {
+  addNode(id: string): SlotPosition {
     // Idempotent: if already assigned, return existing position
     const existing = this.assignments.get(id);
     if (existing !== undefined) {
-      return this.slots[existing].position.clone();
+      const p = this.slots[existing].position;
+      return { x: p.x, y: p.y, z: p.z };
     }
 
     // Find first unoccupied slot
@@ -68,7 +73,8 @@ export class SlotBasedLayout {
       if (!this.occupiedSlots.has(slot.index)) {
         this.assignments.set(id, slot.index);
         this.occupiedSlots.add(slot.index);
-        return slot.position.clone();
+        const p = slot.position;
+        return { x: p.x, y: p.y, z: p.z };
       }
     }
 
@@ -78,7 +84,8 @@ export class SlotBasedLayout {
     const newSlot = this.slots[this.slots.length - DESKS_PER_ROW];
     this.assignments.set(id, newSlot.index);
     this.occupiedSlots.add(newSlot.index);
-    return newSlot.position.clone();
+    const p = newSlot.position;
+    return { x: p.x, y: p.y, z: p.z };
   }
 
   removeNode(id: string): void {
@@ -88,9 +95,10 @@ export class SlotBasedLayout {
     this.assignments.delete(id);
   }
 
-  getPosition(id: string): THREE.Vector3 | null {
+  getPosition(id: string): SlotPosition | null {
     const slotIndex = this.assignments.get(id);
     if (slotIndex === undefined) return null;
-    return this.slots[slotIndex].position.clone();
+    const p = this.slots[slotIndex].position;
+    return { x: p.x, y: p.y, z: p.z };
   }
 }

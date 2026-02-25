@@ -24,6 +24,7 @@
     "build:server": "bun run scripts/build-server.ts",
     "build:cli": "bun run scripts/build-cli.ts",
     "build:publish": "bun run scripts/build-publish.ts",
+    "bump-version": "bun run scripts/bump-version.ts",
     "test": "bun run --filter './server' test",
     "typecheck": "tsc --build"
   },

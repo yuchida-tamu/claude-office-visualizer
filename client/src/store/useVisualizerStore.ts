@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { VisualizerEvent } from '@shared/events';
-import type { AgentNode, AgentStatus, ActiveToolCall } from '@shared/agent';
+import type { AgentNode, AgentStatus, ActiveToolCall, TokenMetrics } from '@shared/agent';
 import type { ServerMessage, ClientSubscribeMessage } from '@shared/messages';
 
 // ---------------------------------------------------------------------------
@@ -61,6 +61,10 @@ export interface VisualizerState {
   // Tracking for thinking-state inference
   lastEventTimeByAgent: Map<string, number>;
 
+  // Token metrics (heatmap)
+  tokenMetrics: Map<string, TokenMetrics>;
+  heatmapEnabled: boolean;
+
   // Actions
   connect: (url?: string) => void;
   disconnect: () => void;
@@ -68,6 +72,7 @@ export interface VisualizerState {
   cleanupStaleAgents: () => void;
   setBufferDelay: (delay: number) => void;
   focusAgent: (agentId: string | null) => void;
+  toggleHeatmap: () => void;
   updateAnimations: (now: number) => void;
   reset: () => void;
 }
@@ -117,6 +122,8 @@ const initialState = {
   totalEventsReceived: 0,
   focusedAgentId: null as string | null,
   lastEventTimeByAgent: new Map<string, number>(),
+  tokenMetrics: new Map<string, TokenMetrics>(),
+  heatmapEnabled: false,
 };
 
 export const useVisualizerStore = create<VisualizerState>((set, get) => ({
@@ -395,6 +402,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
     switch (event.type) {
       case 'SessionStarted': {
         const newAgents = new Map(state.agents);
+        const newTokenMetrics = new Map(state.tokenMetrics);
 
         // Remove previous root agent and its entire subtree so completed
         // avatars don't accumulate across session restarts.
@@ -411,6 +419,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
               removeSubtree(childId);
             }
             newAgents.delete(id);
+            newTokenMetrics.delete(id);
           };
           removeSubtree(prevRootId);
         }
@@ -440,6 +449,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           rootAgentId: event.session_id,
           currentSessionId: event.session_id,
           activeToolCalls: newToolCalls,
+          tokenMetrics: newTokenMetrics,
         });
         break;
       }
@@ -536,7 +546,16 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
 
         if (agent) {
           newAgents.set(event.agent_id, { ...agent, status: 'completed', activeToolCall: null });
-          set({ agents: newAgents });
+
+          // Token metrics: capture optional token usage for sub-agent
+          const acMetrics = new Map(state.tokenMetrics);
+          const am = getOrCreateMetrics(acMetrics, event.agent_id);
+          acMetrics.set(event.agent_id, {
+            ...am,
+            inputTokens: am.inputTokens + (event.input_tokens ?? 0),
+            outputTokens: am.outputTokens + (event.output_tokens ?? 0),
+          });
+          set({ agents: newAgents, tokenMetrics: acMetrics });
 
           // Remove after animation delay (live events only — history replay
           // relies on cleanupStaleAgents to remove completed agents)
@@ -589,7 +608,12 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           });
         }
 
-        set({ activeToolCalls: newToolCalls, agents: newAgents });
+        // Token metrics: count tool call
+        const newMetrics = new Map(state.tokenMetrics);
+        const m = getOrCreateMetrics(newMetrics, event.session_id);
+        newMetrics.set(event.session_id, { ...m, toolCallCount: m.toolCallCount + 1 });
+
+        set({ activeToolCalls: newToolCalls, agents: newAgents, tokenMetrics: newMetrics });
         break;
       }
 
@@ -609,7 +633,12 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           });
         }
 
-        set({ activeToolCalls: newToolCalls, agents: newAgents });
+        // Token metrics: accumulate duration
+        const newMetrics = new Map(state.tokenMetrics);
+        const m = getOrCreateMetrics(newMetrics, event.session_id);
+        newMetrics.set(event.session_id, { ...m, toolCallDurationMs: m.toolCallDurationMs + event.duration_ms });
+
+        set({ activeToolCalls: newToolCalls, agents: newAgents, tokenMetrics: newMetrics });
         break;
       }
 
@@ -617,11 +646,16 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         const newToolCalls = new Map(state.activeToolCalls);
         newToolCalls.delete(event.tool_use_id);
 
+        // Token metrics: count failure
+        const newMetrics = new Map(state.tokenMetrics);
+        const mf = getOrCreateMetrics(newMetrics, event.session_id);
+        newMetrics.set(event.session_id, { ...mf, failedToolCalls: mf.failedToolCalls + 1 });
+
         const newAgents = ensureAgentExists(state.agents, event.session_id, set, state.rootAgentId);
         const agent = newAgents.get(event.session_id);
         if (agent) {
           newAgents.set(event.session_id, { ...agent, status: 'error', activeToolCall: null, notificationMessage: null, notificationType: null });
-          set({ activeToolCalls: newToolCalls, agents: newAgents });
+          set({ activeToolCalls: newToolCalls, agents: newAgents, tokenMetrics: newMetrics });
 
           // Revert to active after brief error display (live events only)
           if (eventTime === undefined) {
@@ -638,7 +672,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
             }, 1500);
           }
         } else {
-          set({ activeToolCalls: newToolCalls });
+          set({ activeToolCalls: newToolCalls, tokenMetrics: newMetrics });
         }
         break;
       }
@@ -705,6 +739,18 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
         // Re-read rootAgentId — ensureAgentExists may have set it
         const currentRootId = get().rootAgentId;
         const root = currentRootId ? newAgents.get(currentRootId) : undefined;
+
+        // Token metrics: capture optional token usage
+        const seMetrics = new Map(state.tokenMetrics);
+        if (currentRootId) {
+          const sm = getOrCreateMetrics(seMetrics, currentRootId);
+          seMetrics.set(currentRootId, {
+            ...sm,
+            inputTokens: sm.inputTokens + (event.input_tokens ?? 0),
+            outputTokens: sm.outputTokens + (event.output_tokens ?? 0),
+          });
+        }
+
         if (root && currentRootId) {
           // "stop" fires between turns — agent is waiting for user, not finished.
           // Preserve notification fields when staying in waiting state (a preceding
@@ -718,13 +764,19 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
             notificationMessage: isStop ? root.notificationMessage : null,
             notificationType: isStop ? root.notificationType : null,
           });
-          set({ agents: newAgents });
+          set({ agents: newAgents, tokenMetrics: seMetrics });
+        } else {
+          set({ tokenMetrics: seMetrics });
         }
         break;
       }
 
       case 'ContextCompaction': {
-        // Optional: could store context pressure on agent. No-op for now.
+        // Token metrics: update context pressure
+        const cpMetrics = new Map(state.tokenMetrics);
+        const cp = getOrCreateMetrics(cpMetrics, event.session_id);
+        cpMetrics.set(event.session_id, { ...cp, contextPressure: event.context_pressure });
+        set({ tokenMetrics: cpMetrics });
         break;
       }
     }
@@ -742,6 +794,13 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
   // -------------------------------------------------------------------
   focusAgent: (agentId: string | null) => {
     set({ focusedAgentId: agentId });
+  },
+
+  // -------------------------------------------------------------------
+  // Heatmap toggle
+  // -------------------------------------------------------------------
+  toggleHeatmap: () => {
+    set({ heatmapEnabled: !get().heatmapEnabled });
   },
 
   // -------------------------------------------------------------------
@@ -792,6 +851,8 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
       lastEventTimeByAgent: new Map(),
       activeMessages: [],
       eventBuffer: [],
+      tokenMetrics: new Map(),
+      heatmapEnabled: false,
     });
   },
 }));
@@ -852,6 +913,21 @@ function ensureAgentExists(
     set({ rootAgentId: sessionId, currentSessionId: sessionId });
   }
   return newAgents;
+}
+
+function getOrCreateMetrics(map: Map<string, TokenMetrics>, agentId: string): TokenMetrics {
+  const existing = map.get(agentId);
+  if (existing) return existing;
+  const fresh: TokenMetrics = {
+    toolCallCount: 0,
+    toolCallDurationMs: 0,
+    failedToolCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    contextPressure: 0,
+  };
+  map.set(agentId, fresh);
+  return fresh;
 }
 
 function extractAgentId(event: VisualizerEvent): string | null {

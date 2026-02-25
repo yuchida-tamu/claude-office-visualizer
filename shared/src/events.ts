@@ -33,6 +33,9 @@ export interface AgentCompletedEvent extends EventBase {
   agent_id: string;
   transcript_path: string | null;
   result: string | null;
+  /** Token usage — forwarded from Claude Code when available. */
+  input_tokens?: number;
+  output_tokens?: number;
 }
 
 export interface ToolCallStartedEvent extends EventBase {
@@ -75,6 +78,9 @@ export interface SessionEndedEvent extends EventBase {
   type: 'SessionEnded';
   reason: string;
   summary: string | null;
+  /** Token usage — forwarded from Claude Code when available. */
+  input_tokens?: number;
+  output_tokens?: number;
 }
 
 export interface UserPromptEvent extends EventBase {

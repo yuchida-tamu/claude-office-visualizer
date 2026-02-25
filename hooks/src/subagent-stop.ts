@@ -20,6 +20,8 @@ async function main() {
       agent_id: data.agent_id || '',
       transcript_path: data.transcript_path ?? null,
       result: data.result ?? null,
+      ...(typeof data.input_tokens === 'number' ? { input_tokens: data.input_tokens } : {}),
+      ...(typeof data.output_tokens === 'number' ? { output_tokens: data.output_tokens } : {}),
     };
 
     await fetch(SERVER_URL, {

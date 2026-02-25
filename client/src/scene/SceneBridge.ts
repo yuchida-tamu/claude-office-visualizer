@@ -2,6 +2,7 @@ import type { AgentNode } from '@shared/agent';
 import type { SceneManager } from './SceneManager';
 import type { ToolAnimationManager } from './ToolAnimationManager';
 import type { VisualizerState, MessageInFlight } from '../store/useVisualizerStore';
+import { selectHeatmapData } from '../store/selectors';
 
 /**
  * SceneBridge — connects Zustand store state to the 3D scene.
@@ -15,6 +16,7 @@ export class SceneBridge {
   private toolAnimations: ToolAnimationManager;
   private prevAgents = new Map<string, AgentNode>();
   private prevFocusedAgentId: string | null = null;
+  private prevHeatmapEnabled = false;
 
   constructor(sceneManager: SceneManager, toolAnimations: ToolAnimationManager) {
     this.sceneManager = sceneManager;
@@ -29,6 +31,7 @@ export class SceneBridge {
     this.syncAgents(state.agents);
     this.syncMessages(state.activeMessages);
     this.syncFocus(state.focusedAgentId);
+    this.syncHeatmap(state);
 
     // Drive the store animation ticker
     state.updateAnimations(Date.now());
@@ -135,6 +138,35 @@ export class SceneBridge {
       }
     } else {
       cam.resetView();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Heatmap — per-agent token usage ring
+  // ---------------------------------------------------------------------------
+
+  private syncHeatmap(state: VisualizerState): void {
+    const deskManager = this.sceneManager.deskManager;
+    const heatmapData = selectHeatmapData(state);
+
+    // If heatmap was just disabled, clear all rings
+    if (this.prevHeatmapEnabled && !state.heatmapEnabled) {
+      deskManager.clearAllHeatmaps();
+    }
+    this.prevHeatmapEnabled = state.heatmapEnabled;
+
+    if (!state.heatmapEnabled) return;
+
+    // Update intensity for each agent with data
+    for (const [agentId, intensity] of heatmapData) {
+      deskManager.setHeatmapIntensity(agentId, intensity);
+    }
+
+    // Clear rings for agents that no longer have data
+    for (const [agentId] of state.agents) {
+      if (!heatmapData.has(agentId)) {
+        deskManager.clearHeatmap(agentId);
+      }
     }
   }
 

@@ -26,6 +26,29 @@ const STATUS_COLORS: Record<AgentStatus, number> = {
   spawning: 0x4ade80,
 };
 
+/**
+ * Map intensity (0..1) to a green→yellow→red gradient.
+ * 0.0 = green (#4ade80), 0.5 = yellow (#fbbf24), 1.0 = red (#ef4444)
+ */
+function heatmapColor(t: number): number {
+  const clamp = Math.max(0, Math.min(1, t));
+  let r: number, g: number, b: number;
+  if (clamp < 0.5) {
+    // green → yellow
+    const f = clamp * 2; // 0..1
+    r = Math.round(0x4a + (0xfb - 0x4a) * f);
+    g = Math.round(0xde + (0xbf - 0xde) * f);
+    b = Math.round(0x80 + (0x24 - 0x80) * f);
+  } else {
+    // yellow → red
+    const f = (clamp - 0.5) * 2; // 0..1
+    r = Math.round(0xfb + (0xef - 0xfb) * f);
+    g = Math.round(0xbf + (0x44 - 0xbf) * f);
+    b = Math.round(0x24 + (0x44 - 0x24) * f);
+  }
+  return (r << 16) | (g << 8) | b;
+}
+
 // ---------------------------------------------------------------------------
 // Pre-rendered desk (static furniture)
 // ---------------------------------------------------------------------------
@@ -62,6 +85,11 @@ interface DeskInstance {
   notificationSprite: THREE.Sprite | null;
   notificationVisible: boolean;
   notificationFadeProgress: number; // 0=hidden, 1=fully visible
+  // Heatmap ring state
+  heatmapRing: THREE.Mesh | null;
+  heatmapMaterial: THREE.MeshStandardMaterial | null;
+  heatmapIntensity: number; // 0..1 target
+  heatmapCurrentIntensity: number; // 0..1 smoothed
 }
 
 // ---------------------------------------------------------------------------
@@ -90,8 +118,9 @@ export class DeskManager {
   private chairTemplate: THREE.Group | null = null;
   private avatarTemplate: THREE.Group | null = null;
 
-  // Shared status indicator geometry
+  // Shared geometries
   private statusGeo = new THREE.SphereGeometry(0.15, 16, 16);
+  private heatmapRingGeo = new THREE.RingGeometry(1.3, 1.8, 32);
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -212,6 +241,10 @@ export class DeskManager {
       notificationSprite: null,
       notificationVisible: false,
       notificationFadeProgress: 0,
+      heatmapRing: null,
+      heatmapMaterial: null,
+      heatmapIntensity: 0,
+      heatmapCurrentIntensity: 0,
     });
   }
 
@@ -302,6 +335,10 @@ export class DeskManager {
       notificationSprite: null,
       notificationVisible: false,
       notificationFadeProgress: 0,
+      heatmapRing: null,
+      heatmapMaterial: null,
+      heatmapIntensity: 0,
+      heatmapCurrentIntensity: 0,
     });
   }
 
@@ -384,6 +421,48 @@ export class DeskManager {
     const desk = this.desks.get(agentId);
     if (!desk || !desk.notificationSprite) return;
     desk.notificationVisible = false;
+  }
+
+  /** Set heatmap intensity for an agent's desk (0..1). Creates ring if needed. */
+  setHeatmapIntensity(agentId: string, intensity: number): void {
+    const desk = this.desks.get(agentId);
+    if (!desk) return;
+    desk.heatmapIntensity = Math.max(0, Math.min(1, intensity));
+
+    // Lazily create the ring mesh on first non-zero intensity
+    if (!desk.heatmapRing && desk.heatmapIntensity > 0) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x4ade80,
+        emissive: 0x4ade80,
+        emissiveIntensity: 0.3,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ring = new THREE.Mesh(this.heatmapRingGeo, mat);
+      ring.rotation.x = -Math.PI / 2; // Lay flat
+      ring.position.y = 0.02; // Just above ground
+      ring.name = 'heatmap-ring';
+      desk.group.add(ring);
+      desk.heatmapRing = ring;
+      desk.heatmapMaterial = mat;
+    }
+  }
+
+  /** Remove heatmap ring from a desk. */
+  clearHeatmap(agentId: string): void {
+    const desk = this.desks.get(agentId);
+    if (!desk) return;
+    desk.heatmapIntensity = 0;
+    // Ring fades out in update(), then gets cleaned up
+  }
+
+  /** Remove all heatmap rings. */
+  clearAllHeatmaps(): void {
+    for (const [agentId] of this.desks) {
+      this.clearHeatmap(agentId);
+    }
   }
 
   /** Called each frame. */
@@ -483,6 +562,36 @@ export class DeskManager {
         }
       }
 
+      // Heatmap ring animation — smooth intensity transitions + color gradient
+      if (desk.heatmapRing && desk.heatmapMaterial) {
+        const LERP_SPEED = 3;
+        const target = desk.heatmapIntensity;
+        const current = desk.heatmapCurrentIntensity;
+        desk.heatmapCurrentIntensity += (target - current) * Math.min(deltaTime * LERP_SPEED, 1);
+
+        if (desk.heatmapCurrentIntensity < 0.01 && target === 0) {
+          // Fully faded — remove ring
+          desk.group.remove(desk.heatmapRing);
+          desk.heatmapMaterial.dispose();
+          desk.heatmapRing = null;
+          desk.heatmapMaterial = null;
+          desk.heatmapCurrentIntensity = 0;
+        } else {
+          const i = desk.heatmapCurrentIntensity;
+          desk.heatmapMaterial.opacity = 0.3 + i * 0.5;
+          desk.heatmapMaterial.emissiveIntensity = 0.3 + i * 0.7;
+          // Color gradient: green (0) → yellow (0.5) → red (1)
+          const color = heatmapColor(i);
+          desk.heatmapMaterial.color.setHex(color);
+          desk.heatmapMaterial.emissive.setHex(color);
+          // Gentle pulse at high intensity
+          if (i > 0.7) {
+            const pulse = (Math.sin(time * 4) + 1) * 0.5;
+            desk.heatmapMaterial.emissiveIntensity += pulse * 0.2;
+          }
+        }
+      }
+
       // Update parent-child line positions
       if (desk.parentLine) {
         const parentDesk = this.findParentDesk(agentId);
@@ -538,8 +647,9 @@ export class DeskManager {
     }
     this.preRenderedDesks = [];
 
-    // Dispose shared status geometry
+    // Dispose shared geometries
     this.statusGeo.dispose();
+    this.heatmapRingGeo.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -684,6 +794,14 @@ export class DeskManager {
   private cleanupAvatar(agentId: string, desk: DeskInstance): void {
     console.warn('[DeskMgr] cleanupAvatar: removing avatar for', agentId);
 
+    // Remove heatmap ring
+    if (desk.heatmapRing) {
+      desk.group.remove(desk.heatmapRing);
+      desk.heatmapMaterial?.dispose();
+      desk.heatmapRing = null;
+      desk.heatmapMaterial = null;
+    }
+
     // Remove notification sprite
     if (desk.notificationSprite) {
       desk.group.remove(desk.notificationSprite);
@@ -732,6 +850,14 @@ export class DeskManager {
   /** Clean up a legacy desk (removes entire group from scene). */
   private cleanupLegacyDesk(agentId: string, desk: DeskInstance): void {
     console.warn('[DeskMgr] cleanupDesk: fully removing', agentId);
+
+    // Dispose heatmap ring if present
+    if (desk.heatmapRing) {
+      desk.group.remove(desk.heatmapRing);
+      desk.heatmapMaterial?.dispose();
+      desk.heatmapRing = null;
+      desk.heatmapMaterial = null;
+    }
 
     // Dispose notification sprite if present
     if (desk.notificationSprite) {

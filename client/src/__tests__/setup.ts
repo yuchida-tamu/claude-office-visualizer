@@ -94,6 +94,7 @@ mock.module('three', () => ({
   Group: MockGroup,
   Color: class { setHSL() { return this; } getHex() { return 0xffffff; } },
   SphereGeometry: class { dispose() {} },
+  RingGeometry: class { dispose() {} },
   Clock: class {
     private _calls = 0;
     getElapsedTime() { return this._calls++ * 0.5; }

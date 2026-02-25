@@ -2,6 +2,9 @@
 
 Real-time 3D visualization of Claude Code agent orchestration. Watch your AI agents work in an interactive office scene powered by Three.js.
 
+<img width="1419" height="701" alt="Screenshot 2026-02-25 at 15 26 36" src="https://github.com/user-attachments/assets/4d42a986-f14b-4f0e-94d8-89300ae2896b" />
+
+
 ## Quick Start
 
 Two things are needed: the **server** (serves the 3D UI) and the **plugin** (hooks that send Claude Code events to the server).

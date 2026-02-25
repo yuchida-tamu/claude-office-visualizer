@@ -2,31 +2,44 @@
 
 Real-time 3D visualization of Claude Code agent orchestration. Watch your AI agents work in an interactive office scene powered by Three.js.
 
+## Installation
+
+### Via Marketplace (recommended)
+
+```bash
+# In Claude Code, add the marketplace and install:
+/plugin marketplace add yuchida-tamu/my-agent-skills
+/plugin install claude-office-visualizer@yuchida-agent-skills
+```
+
+### Via npm
+
+```bash
+# Install globally
+npm install -g claude-office-visualizer
+
+# Or with bun
+bun install -g claude-office-visualizer
+```
+
+### Via --plugin-dir (development)
+
+```bash
+claude --plugin-dir /path/to/claude-office-visualizer
+```
+
 ## Quick Start
 
 ```bash
-# Install
-bun install -g claude-visualizer
-
-# Start the visualizer server
+# 1. Start the visualizer server
 claude-visualizer start
 
-# Open http://localhost:3333 in your browser
+# 2. Open http://localhost:3333 in your browser
 
-# Stop when done
+# 3. Use Claude Code as normal — agents appear in the 3D scene in real-time
+
+# 4. Stop when done
 claude-visualizer stop
-```
-
-## Claude Code Plugin Setup
-
-Connect Claude Code to the visualizer so agent lifecycle events appear in real-time:
-
-```bash
-# Start the visualizer
-claude-visualizer start
-
-# Launch Claude Code with the plugin
-claude --plugin-dir /path/to/claude-visualizer
 ```
 
 The plugin registers 12 hooks that capture session start/end, sub-agent spawn/stop, tool calls, messages, notifications, and more.
@@ -37,6 +50,7 @@ The plugin registers 12 hooks that capture session start/end, sub-agent spawn/st
 claude-visualizer start [options]   Start the visualizer server
 claude-visualizer stop              Stop the visualizer server
 claude-visualizer status            Show server status
+claude-visualizer clean [--force]   Remove local data (db, pid file)
 ```
 
 ### Options (start)

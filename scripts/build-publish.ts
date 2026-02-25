@@ -119,8 +119,54 @@ if (!valid) {
   process.exit(1);
 }
 
+// Stage 9: Assemble publishable package
+console.log('\n--- Stage 9: Assemble publishable package ---');
+
+// Copy hooks/dist/ into dist/hooks/dist/
+const hooksDestInDist = path.resolve(DIST, 'hooks/dist');
+mkdirSync(hooksDestInDist, { recursive: true });
+cpSync(HOOKS_DIST, hooksDestInDist, { recursive: true });
+
+// Copy .claude-plugin/ into dist/.claude-plugin/
+const pluginSrc = path.resolve(ROOT, '.claude-plugin');
+const pluginDest = path.resolve(DIST, '.claude-plugin');
+cpSync(pluginSrc, pluginDest, { recursive: true });
+
+// Generate a standalone package.json for the distribution
+const distPackageJson = {
+  name: 'claude-visualizer',
+  version: '0.1.0',
+  type: 'module',
+  description: 'Real-time 3D visualization of Claude Code agent orchestration',
+  bin: {
+    'claude-visualizer': './cli.js',
+  },
+  files: [
+    'cli.js',
+    'server/',
+    'client/',
+    'hooks/',
+    '.claude-plugin/',
+  ],
+  engines: { bun: '>=1.0' },
+  license: 'MIT',
+};
+
+const { writeFileSync } = await import('node:fs');
+writeFileSync(
+  path.resolve(DIST, 'package.json'),
+  JSON.stringify(distPackageJson, null, 2) + '\n',
+);
+console.log('Generated: dist/package.json');
+console.log('Copied: hooks/dist/ -> dist/hooks/dist/');
+console.log('Copied: .claude-plugin/ -> dist/.claude-plugin/');
+
 console.log(`\nBuild complete. Output structure:`);
+console.log(`  dist/package.json       (publishable manifest)`);
 console.log(`  dist/cli.js             (CLI entry point)`);
 console.log(`  dist/server/index.js    (server bundle)`);
 console.log(`  dist/client/            (static SPA)`);
-console.log(`  hooks/dist/             (${builtHooks.length} hook bundles)`);
+console.log(`  dist/hooks/dist/        (${builtHooks.length} hook bundles)`);
+console.log(`  dist/.claude-plugin/    (plugin manifest)`);
+console.log(`\nTo test locally:`);
+console.log(`  cd /path/to/test-dir && bun install ${DIST}`);

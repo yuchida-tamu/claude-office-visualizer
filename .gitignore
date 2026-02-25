@@ -11,3 +11,4 @@ hooks/dist/
 logs/
 .claude/settings.local.json
 *.tsbuildinfo
+*.tgz

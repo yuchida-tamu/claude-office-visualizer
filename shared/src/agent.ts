@@ -46,3 +46,19 @@ export interface AgentNode {
  * Use a plain Record for serialisability across WebSocket boundaries.
  */
 export type AgentTree = Record<string, AgentNode>;
+
+/** Per-agent resource consumption metrics for heatmap visualization. */
+export interface TokenMetrics {
+  /** Total tool calls initiated by this agent. */
+  toolCallCount: number;
+  /** Sum of ToolCallCompleted.duration_ms for this agent. */
+  toolCallDurationMs: number;
+  /** Number of failed tool calls. */
+  failedToolCalls: number;
+  /** Cumulative input tokens (from SessionEnded/AgentCompleted; 0 if unavailable). */
+  inputTokens: number;
+  /** Cumulative output tokens (from SessionEnded/AgentCompleted; 0 if unavailable). */
+  outputTokens: number;
+  /** Latest context pressure ratio from ContextCompaction (0..1). */
+  contextPressure: number;
+}

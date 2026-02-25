@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useVisualizerStore } from '../store/useVisualizerStore';
-import { selectFocusedAgent } from '../store/selectors';
-import type { AgentStatus } from '@shared/agent';
+import { selectFocusedAgent, selectAgentTokenMetrics } from '../store/selectors';
+import type { AgentStatus, TokenMetrics } from '@shared/agent';
 
 // ---------------------------------------------------------------------------
 // Status color mapping (matches 3D scene indicator colors)
@@ -68,6 +68,17 @@ function useElapsedTime(startedAt: string | null): string {
 function truncateId(id: string, maxLen = 12): string {
   if (id.length <= maxLen) return id;
   return id.slice(0, maxLen) + '...';
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return ms + 'ms';
+  return (ms / 1000).toFixed(1) + 's';
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +244,32 @@ const styles = {
     padding: '10px 12px',
     wordBreak: 'break-word' as const,
   },
+  metricsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: '8px',
+  },
+  metricItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center' as const,
+    padding: '8px 4px',
+    background: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: '6px',
+  },
+  metricValue: {
+    fontSize: '14px',
+    fontWeight: 600,
+    color: '#ffffff',
+    fontFamily: 'monospace',
+  },
+  metricLabel: {
+    fontSize: '9px',
+    color: 'rgba(255, 255, 255, 0.4)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    marginTop: '2px',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -242,6 +279,8 @@ const styles = {
 export function AgentDetailPanel() {
   const agent = useVisualizerStore(selectFocusedAgent);
   const focusAgent = useVisualizerStore((s) => s.focusAgent);
+  const agentId = agent?.id ?? '';
+  const metrics = useVisualizerStore(selectAgentTokenMetrics(agentId));
 
   // Track visibility separately for slide-in animation
   const [visible, setVisible] = useState(false);
@@ -372,6 +411,50 @@ export function AgentDetailPanel() {
                 <span style={styles.value}>{agent.children.length}</span>
               </div>
             </div>
+
+            {/* Token metrics section */}
+            {metrics && (metrics.toolCallCount > 0 || metrics.inputTokens > 0) && (
+              <>
+                <div style={styles.divider} />
+                <div style={styles.section}>
+                  <div style={styles.sectionTitle}>Usage</div>
+                  <div style={styles.metricsGrid}>
+                    <div style={styles.metricItem}>
+                      <span style={styles.metricValue}>{metrics.toolCallCount}</span>
+                      <span style={styles.metricLabel}>Tool Calls</span>
+                    </div>
+                    <div style={styles.metricItem}>
+                      <span style={styles.metricValue}>{formatDuration(metrics.toolCallDurationMs)}</span>
+                      <span style={styles.metricLabel}>Total Duration</span>
+                    </div>
+                    {metrics.failedToolCalls > 0 && (
+                      <div style={styles.metricItem}>
+                        <span style={{ ...styles.metricValue, color: '#ef4444' }}>{metrics.failedToolCalls}</span>
+                        <span style={styles.metricLabel}>Failed</span>
+                      </div>
+                    )}
+                    {metrics.inputTokens > 0 && (
+                      <div style={styles.metricItem}>
+                        <span style={styles.metricValue}>{formatNumber(metrics.inputTokens)}</span>
+                        <span style={styles.metricLabel}>Input Tokens</span>
+                      </div>
+                    )}
+                    {metrics.outputTokens > 0 && (
+                      <div style={styles.metricItem}>
+                        <span style={styles.metricValue}>{formatNumber(metrics.outputTokens)}</span>
+                        <span style={styles.metricLabel}>Output Tokens</span>
+                      </div>
+                    )}
+                    {metrics.contextPressure > 0 && (
+                      <div style={styles.metricItem}>
+                        <span style={styles.metricValue}>{Math.round(metrics.contextPressure * 100)}%</span>
+                        <span style={styles.metricLabel}>Context</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

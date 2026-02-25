@@ -19,6 +19,8 @@ async function main() {
       session_id: data.session_id || 'unknown',
       reason: data.reason || 'stop',
       summary: data.summary ?? null,
+      ...(typeof data.input_tokens === 'number' ? { input_tokens: data.input_tokens } : {}),
+      ...(typeof data.output_tokens === 'number' ? { output_tokens: data.output_tokens } : {}),
     };
 
     await fetch(SERVER_URL, {

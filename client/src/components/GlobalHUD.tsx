@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useVisualizerStore } from '../store/useVisualizerStore';
-import { selectStats, selectConnectionStatus } from '../store/selectors';
+import { selectStats, selectConnectionStatus, selectHeatmapEnabled } from '../store/selectors';
 import type { ConnectionStatus } from '../store/useVisualizerStore';
 
 const STATUS_COLORS: Record<ConnectionStatus, string> = {
@@ -21,6 +21,8 @@ export function GlobalHUD() {
   const connectionStatus = useVisualizerStore(selectConnectionStatus);
   const stats = useVisualizerStore(useShallow(selectStats));
   const sessionId = useVisualizerStore((s) => s.currentSessionId);
+  const heatmapEnabled = useVisualizerStore(selectHeatmapEnabled);
+  const toggleHeatmap = useVisualizerStore((s) => s.toggleHeatmap);
 
   const dotColor = STATUS_COLORS[connectionStatus];
   const truncatedSession = sessionId ? sessionId.slice(0, 8) : '--';
@@ -58,6 +60,28 @@ export function GlobalHUD() {
           <span style={styles.statLabel}>Events</span>
         </div>
       </div>
+
+      {/* Heatmap toggle */}
+      <button
+        style={{
+          ...styles.heatmapToggle,
+          ...(heatmapEnabled ? styles.heatmapToggleActive : {}),
+        }}
+        onClick={toggleHeatmap}
+        title={heatmapEnabled ? 'Disable token heatmap' : 'Enable token heatmap'}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: heatmapEnabled ? '#4ade80' : 'rgba(255, 255, 255, 0.3)',
+            boxShadow: heatmapEnabled ? '0 0 6px #4ade80' : 'none',
+            transition: 'all 0.2s ease',
+          }}
+        />
+        Heatmap
+      </button>
 
       {/* Session ID */}
       <div style={styles.sessionRow}>
@@ -124,6 +148,28 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
+  },
+  heatmapToggle: {
+    display: 'flex',
+    alignItems: 'center' as const,
+    gap: 6,
+    width: '100%',
+    padding: '6px 10px',
+    marginBottom: 10,
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 6,
+    color: 'rgba(255, 255, 255, 0.6)',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontFamily: 'inherit',
+    letterSpacing: 0.3,
+    transition: 'all 0.2s ease',
+  },
+  heatmapToggleActive: {
+    background: 'rgba(74, 222, 128, 0.15)',
+    borderColor: 'rgba(74, 222, 128, 0.3)',
+    color: '#4ade80',
   },
   sessionRow: {
     display: 'flex',

@@ -638,3 +638,91 @@ describe('common behavior', () => {
     expect(new Date(String(event.timestamp)).toISOString()).toBe(event.timestamp as string);
   });
 });
+
+// ─── Token usage forwarding ───────────────────────────────────────────────
+
+describe('token usage forwarding', () => {
+  test('session-end forwards input_tokens/output_tokens when present', async () => {
+    await runHook('session-end.ts', {
+      session_id: 'sess-123',
+      reason: 'normal',
+      input_tokens: 5000,
+      output_tokens: 1500,
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBe(5000);
+    expect(event.output_tokens).toBe(1500);
+  });
+
+  test('session-end omits token fields when not present', async () => {
+    await runHook('session-end.ts', {
+      session_id: 'sess-123',
+      reason: 'normal',
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBeUndefined();
+    expect(event.output_tokens).toBeUndefined();
+  });
+
+  test('stop hook forwards input_tokens/output_tokens when present', async () => {
+    await runHook('stop.ts', {
+      session_id: 'sess-456',
+      reason: 'stop',
+      input_tokens: 3000,
+      output_tokens: 800,
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBe(3000);
+    expect(event.output_tokens).toBe(800);
+  });
+
+  test('stop hook omits token fields when not present', async () => {
+    await runHook('stop.ts', {
+      session_id: 'sess-456',
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBeUndefined();
+    expect(event.output_tokens).toBeUndefined();
+  });
+
+  test('subagent-stop forwards input_tokens/output_tokens when present', async () => {
+    await runHook('subagent-stop.ts', {
+      session_id: 'parent-sess',
+      agent_id: 'a8efeee',
+      input_tokens: 2000,
+      output_tokens: 600,
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBe(2000);
+    expect(event.output_tokens).toBe(600);
+  });
+
+  test('subagent-stop omits token fields when not present', async () => {
+    await runHook('subagent-stop.ts', {
+      session_id: 'parent-sess',
+      agent_id: 'a8efeee',
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBeUndefined();
+    expect(event.output_tokens).toBeUndefined();
+  });
+
+  test('non-numeric token values are ignored', async () => {
+    await runHook('session-end.ts', {
+      session_id: 'sess-123',
+      reason: 'normal',
+      input_tokens: 'not a number',
+      output_tokens: null,
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.input_tokens).toBeUndefined();
+    expect(event.output_tokens).toBeUndefined();
+  });
+});

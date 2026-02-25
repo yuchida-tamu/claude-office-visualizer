@@ -395,6 +395,32 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
     switch (event.type) {
       case 'SessionStarted': {
         const newAgents = new Map(state.agents);
+
+        // Remove previous root agent and its entire subtree so completed
+        // avatars don't accumulate across session restarts.
+        const prevRootId = state.rootAgentId;
+        const removedToolUseIds = new Set<string>();
+        if (prevRootId && prevRootId !== event.session_id && newAgents.has(prevRootId)) {
+          const removeSubtree = (id: string) => {
+            const agent = newAgents.get(id);
+            if (!agent) return;
+            if (agent.activeToolCall) {
+              removedToolUseIds.add(agent.activeToolCall.tool_use_id);
+            }
+            for (const childId of agent.children) {
+              removeSubtree(childId);
+            }
+            newAgents.delete(id);
+          };
+          removeSubtree(prevRootId);
+        }
+
+        // Clear tool calls belonging to the removed agents
+        const newToolCalls = new Map(state.activeToolCalls);
+        for (const toolId of removedToolUseIds) {
+          newToolCalls.delete(toolId);
+        }
+
         const newAgent: AgentNode = {
           id: event.session_id,
           parentId: null,
@@ -413,6 +439,7 @@ export const useVisualizerStore = create<VisualizerState>((set, get) => ({
           agents: newAgents,
           rootAgentId: event.session_id,
           currentSessionId: event.session_id,
+          activeToolCalls: newToolCalls,
         });
         break;
       }

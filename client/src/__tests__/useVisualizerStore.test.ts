@@ -1095,16 +1095,51 @@ describe('useVisualizerStore', () => {
       expect(getState().activeToolCalls.size).toBe(0);
     });
 
-    test('session restart: new SessionStarted replaces rootAgentId', () => {
+    test('session restart: new SessionStarted removes old root agent', () => {
       setupRootSession(SESSION_ID);
       processEvent(makeSessionEnded({ reason: 'normal' }));
       expect(getState().agents.get(SESSION_ID)!.status).toBe('completed');
 
-      // New session
+      // New session should remove the old root
       processEvent(makeSessionStarted({ session_id: SESSION_ID_2 }));
       expect(getState().rootAgentId).toBe(SESSION_ID_2);
-      expect(getState().agents.has(SESSION_ID)).toBe(true);
+      expect(getState().agents.has(SESSION_ID)).toBe(false);
       expect(getState().agents.has(SESSION_ID_2)).toBe(true);
+    });
+
+    test('session restart: old root sub-agents are also removed', () => {
+      setupRootSession(SESSION_ID);
+      processEvent(makeAgentSpawned({ agent_id: AGENT_ID, parent_session_id: SESSION_ID }));
+      processEvent(makeAgentSpawned({ agent_id: AGENT_ID_2, parent_session_id: SESSION_ID }));
+      expect(getState().agents.size).toBe(3);
+
+      // New session should remove old root and its children
+      processEvent(makeSessionStarted({ session_id: SESSION_ID_2 }));
+      expect(getState().agents.size).toBe(1);
+      expect(getState().agents.has(SESSION_ID)).toBe(false);
+      expect(getState().agents.has(AGENT_ID)).toBe(false);
+      expect(getState().agents.has(AGENT_ID_2)).toBe(false);
+      expect(getState().agents.has(SESSION_ID_2)).toBe(true);
+    });
+
+    test('session restart: same session_id does not remove itself', () => {
+      setupRootSession(SESSION_ID);
+
+      // Re-sending SessionStarted for the same session is idempotent
+      processEvent(makeSessionStarted({ session_id: SESSION_ID }));
+      expect(getState().rootAgentId).toBe(SESSION_ID);
+      expect(getState().agents.has(SESSION_ID)).toBe(true);
+      expect(getState().agents.get(SESSION_ID)!.status).toBe('active');
+    });
+
+    test('session restart: clears activeToolCalls from old session', () => {
+      setupRootSession(SESSION_ID);
+      processEvent(makeToolCallStarted({ tool_use_id: TOOL_USE_ID }));
+      expect(getState().activeToolCalls.size).toBe(1);
+
+      // New session should clear tool calls from old session
+      processEvent(makeSessionStarted({ session_id: SESSION_ID_2 }));
+      expect(getState().activeToolCalls.size).toBe(0);
     });
 
     test('history replay full sequence with cleanup', () => {

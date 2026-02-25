@@ -311,6 +311,20 @@ describe('DeskManager desk/avatar separation', () => {
       expect(g2).toBe(g1);
     });
 
+    test('despawnAvatar immediately frees desk for reuse (same frame)', () => {
+      dm.initDesks(1); // Only 1 desk
+      dm.spawnAvatar('agent-1');
+      const g1 = dm.getDeskGroup('agent-1')!;
+
+      // Despawn and immediately spawn new agent (no update() in between)
+      dm.despawnAvatar('agent-1');
+      dm.spawnAvatar('agent-2');
+      const g2 = dm.getDeskGroup('agent-2')!;
+      expect(g2).not.toBeNull();
+      // Should reuse the same desk group (the leader desk)
+      expect(g2).toBe(g1);
+    });
+
     test('status-indicator is removed after despawn', () => {
       dm.initDesks(5);
       dm.spawnAvatar('agent-1');

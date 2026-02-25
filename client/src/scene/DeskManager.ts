@@ -222,6 +222,14 @@ export class DeskManager {
     console.warn('[DeskMgr] despawnAvatar: starting despawn for', agentId);
     desk.despawning = true;
     desk.despawnProgress = 0;
+
+    // Immediately free the pre-rendered desk so it can be reused in the same
+    // frame (e.g. when a new session replaces the old root agent). The avatar
+    // fade-out animation continues, but the desk slot is available immediately.
+    const prd = this.preRenderedDesks.find((d) => d.slotIndex === desk.slotIndex);
+    if (prd) {
+      prd.assignedAgentId = null;
+    }
   }
 
   // ---------------------------------------------------------------------------

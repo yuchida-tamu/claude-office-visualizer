@@ -34,13 +34,13 @@ describe('CLI entry point', () => {
 
   test('--version shows version', () => {
     const result = runCli('--version');
-    expect(result.stdout).toContain('claude-visualizer 0.1.0');
+    expect(result.stdout).toMatch(/claude-visualizer \d+\.\d+\.\d+/);
     expect(result.exitCode).toBe(0);
   });
 
   test('-v shows version', () => {
     const result = runCli('-v');
-    expect(result.stdout).toContain('claude-visualizer 0.1.0');
+    expect(result.stdout).toMatch(/claude-visualizer \d+\.\d+\.\d+/);
     expect(result.exitCode).toBe(0);
   });
 

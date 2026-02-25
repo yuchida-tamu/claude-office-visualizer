@@ -2,6 +2,19 @@
 // CLI entry point for claude-visualizer
 export {};
 
+import { resolve } from 'path';
+import { readFileSync } from 'fs';
+
+function getVersion(): string {
+  try {
+    const pkgPath = resolve(import.meta.dir, '..', '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -17,7 +30,7 @@ switch (command) {
     break;
   case '--version':
   case '-v':
-    console.log('claude-visualizer 0.1.0');
+    console.log(`claude-visualizer ${getVersion()}`);
     break;
   case '--help':
   case '-h':

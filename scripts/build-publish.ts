@@ -11,11 +11,15 @@
  *   7. Copy client build output to dist/client/
  *   8. Validate output structure
  */
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const DIST = path.resolve(ROOT, 'dist');
+
+// Read version from root package.json (single source of truth)
+const rootPkg = JSON.parse(readFileSync(path.resolve(ROOT, 'package.json'), 'utf-8'));
+const VERSION: string = rootPkg.version;
 const HOOKS_DIST = path.resolve(ROOT, 'hooks/dist');
 const CLIENT_BUILD = path.resolve(ROOT, 'client/dist');
 const CLIENT_DEST = path.resolve(DIST, 'client');
@@ -135,9 +139,20 @@ cpSync(pluginSrc, pluginDest, { recursive: true });
 // Generate a standalone package.json for the distribution
 const distPackageJson = {
   name: 'claude-visualizer',
-  version: '0.1.0',
+  version: VERSION,
   type: 'module',
   description: 'Real-time 3D visualization of Claude Code agent orchestration',
+  author: 'Yuta Uchida',
+  license: 'MIT',
+  keywords: [
+    'claude',
+    'claude-code',
+    'visualizer',
+    'agent',
+    'orchestration',
+    '3d',
+    'three.js',
+  ],
   bin: {
     'claude-visualizer': './cli.js',
   },
@@ -149,7 +164,6 @@ const distPackageJson = {
     '.claude-plugin/',
   ],
   engines: { bun: '>=1.0' },
-  license: 'MIT',
 };
 
 const { writeFileSync } = await import('node:fs');

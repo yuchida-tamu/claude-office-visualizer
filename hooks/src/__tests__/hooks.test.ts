@@ -563,6 +563,6 @@ describe('common behavior', () => {
     // UUID v4 format: 8-4-4-4-12 hex
     expect(event.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     // ISO timestamp
-    expect(new Date(String(event.timestamp)).toISOString()).toBe(event.timestamp);
+    expect(new Date(String(event.timestamp)).toISOString()).toBe(event.timestamp as string);
   });
 });

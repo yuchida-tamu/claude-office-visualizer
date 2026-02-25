@@ -10,3 +10,4 @@ hooks/dist/
 *.log
 logs/
 .claude/settings.local.json
+*.tsbuildinfo

@@ -112,7 +112,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/health'), db, ws);
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.status).toBe('ok');
       expect(typeof body.uptime).toBe('number');
       expect(body.eventCount).toBe(0);
@@ -124,7 +124,7 @@ describe('routes', () => {
       await postEvent(db, ws, makeSessionStartedEvent());
 
       const res = await handleRequest(req('/api/health'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.eventCount).toBe(1);
     });
   });
@@ -138,7 +138,7 @@ describe('routes', () => {
       const res = await postEvent(db, ws, event);
       expect(res.status).toBe(201);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.ok).toBe(true);
     });
 
@@ -149,7 +149,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/events/persist-check'), db, ws);
       expect(res.status).toBe(200);
 
-      const stored = await res.json();
+      const stored = await res.json() as any;
       expect(stored.id).toBe('persist-check');
       expect(stored.type).toBe('SessionStarted');
     });
@@ -178,7 +178,7 @@ describe('routes', () => {
       const res = await postEvent(db, ws, { type: 'SessionStarted' });
       expect(res.status).toBe(400);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toBeDefined();
     });
 
@@ -190,7 +190,7 @@ describe('routes', () => {
       });
       expect(res.status).toBe(400);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toContain('id');
     });
 
@@ -202,7 +202,7 @@ describe('routes', () => {
       });
       expect(res.status).toBe(400);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toContain('type');
     });
 
@@ -215,7 +215,7 @@ describe('routes', () => {
       });
       expect(res.status).toBe(400);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toContain('Unknown event type');
     });
 
@@ -232,7 +232,7 @@ describe('routes', () => {
       // req.json() throws → caught by try/catch → 500
       expect(res.status).toBe(500);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toBeDefined();
     });
 
@@ -265,7 +265,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/events'), db, ws);
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(Array.isArray(body)).toBe(true);
       expect(body.length).toBe(5);
     });
@@ -274,7 +274,7 @@ describe('routes', () => {
       await seedEvents();
 
       const res = await handleRequest(req('/api/events?session_id=session-A'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(3);
       for (const event of body) {
         expect(event.session_id).toBe('session-A');
@@ -285,7 +285,7 @@ describe('routes', () => {
       await seedEvents();
 
       const res = await handleRequest(req('/api/events?type=ToolCallStarted'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(2);
       for (const event of body) {
         expect(event.type).toBe('ToolCallStarted');
@@ -296,7 +296,7 @@ describe('routes', () => {
       await seedEvents();
 
       const res = await handleRequest(req('/api/events?limit=2'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(2);
     });
 
@@ -304,7 +304,7 @@ describe('routes', () => {
       await seedEvents();
 
       const res = await handleRequest(req('/api/events?limit=2&offset=3'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(2);
       expect(body[0].id).toBe('e4');
       expect(body[1].id).toBe('e5');
@@ -313,7 +313,7 @@ describe('routes', () => {
     test('default limit is 100', async () => {
       // Insert more than 100 events — but just verify the limit param defaults
       const res = await handleRequest(req('/api/events'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
       // With only seeded events, all should return. The default is 100 so this is fine.
       expect(Array.isArray(body)).toBe(true);
     });
@@ -342,7 +342,7 @@ describe('routes', () => {
         db,
         ws,
       );
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(1);
       expect(body[0].id).toBe('e2');
     });
@@ -359,7 +359,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/events/lookup-me'), db, ws);
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.id).toBe('lookup-me');
       expect(body.type).toBe('SessionStarted');
     });
@@ -368,7 +368,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/events/does-not-exist'), db, ws);
       expect(res.status).toBe(404);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.error).toBe('Event not found');
     });
   });
@@ -381,7 +381,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/sessions'), db, ws);
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body).toEqual([]);
     });
 
@@ -393,7 +393,7 @@ describe('routes', () => {
       const res = await handleRequest(req('/api/sessions'), db, ws);
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = await res.json() as any;
       expect(body.length).toBe(2);
 
       // Sessions ordered by last_event DESC
@@ -408,7 +408,7 @@ describe('routes', () => {
       await postEvent(db, ws, makeToolCallStartedEvent({ id: 's2', session_id: 'sess-Z', timestamp: '2025-01-01T10:05:00Z' }));
 
       const res = await handleRequest(req('/api/sessions'), db, ws);
-      const body = await res.json();
+      const body = await res.json() as any;
 
       expect(body[0].first_event).toBe('2025-01-01T10:00:00Z');
       expect(body[0].last_event).toBe('2025-01-01T10:05:00Z');

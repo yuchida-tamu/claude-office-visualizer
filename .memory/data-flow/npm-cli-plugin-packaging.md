@@ -260,35 +260,38 @@ flowchart TD
 
 ## 8. Plugin.json Transformation
 
-Current (development -- relative paths, TypeScript source):
+Claude Code's plugin hook system requires the **nested `hooks` array** format —
+each event maps to an array of hook groups, where each group has a `hooks` array.
+
+Current (development -- relative paths, TypeScript source, in settings.local.json):
 ```json
 {
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "bun run hooks/src/session-start.ts" }
+      { "hooks": [{ "type": "command", "command": "bun run hooks/src/session-start.ts" }] }
     ]
   }
 }
 ```
 
-Target (distribution -- CLAUDE_PLUGIN_ROOT paths, pre-built JS):
+Target (distribution -- CLAUDE_PLUGIN_ROOT paths, pre-built JS, in plugin.json):
 ```json
 {
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-start.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-start.js" }] }
     ]
   }
 }
 ```
 
-The source plugin.json stays as-is for development. The build pipeline generates
-the distribution version in the output directory, or the source is updated to use
-`${CLAUDE_PLUGIN_ROOT}` and the development workflow uses a separate local override.
+**Important**: The flat format `[{ "type": "command", "command": "..." }]` does NOT work.
+Each entry in the event array must be a hook group object with a `hooks` key wrapping
+the actual hook definitions.
 
 Decision: Keep two plugin.json variants:
 - `.claude-plugin/plugin.json` -- committed, uses `${CLAUDE_PLUGIN_ROOT}` paths
-  pointing to `hooks/dist/*.js` (works for both npm-installed and plugin installs)
+  pointing to `hooks/dist/*.js` with correct nested format (works for --plugin-dir)
 - `.claude/settings.local.json` -- local dev override, not committed, uses
   `bun run hooks/src/*.ts` for development with hot TypeScript execution
 

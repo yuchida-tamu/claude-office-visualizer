@@ -7,7 +7,7 @@ import { readFileSync } from 'fs';
 
 function getVersion(): string {
   try {
-    const pkgPath = resolve(import.meta.dir, '..', '..', 'package.json');
+    const pkgPath = resolve(import.meta.dir, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     return pkg.version ?? '0.0.0';
   } catch {

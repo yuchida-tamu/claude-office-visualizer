@@ -1,43 +1,43 @@
 {
   "name": "claude-code-visualizer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Real-time 3D visualization of Claude Code agent orchestration",
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-start.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-start.js" }] }
     ],
     "SessionEnd": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-end.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/session-end.js" }] }
     ],
     "SubagentStart": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/subagent-start.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/subagent-start.js" }] }
     ],
     "SubagentStop": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/subagent-stop.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/subagent-stop.js" }] }
     ],
     "PreToolUse": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/pre-tool-use.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/pre-tool-use.js" }] }
     ],
     "PostToolUse": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/post-tool-use.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/post-tool-use.js" }] }
     ],
     "PostToolUseFailure": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/post-tool-use-failure.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/post-tool-use-failure.js" }] }
     ],
     "UserPromptSubmit": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/user-prompt-submit.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/user-prompt-submit.js" }] }
     ],
     "Stop": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/stop.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/stop.js" }] }
     ],
     "Notification": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/notification.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/notification.js" }] }
     ],
     "PermissionRequest": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/permission-request.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/permission-request.js" }] }
     ],
     "PreCompact": [
-      { "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/pre-compact.js" }
+      { "hooks": [{ "type": "command", "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/dist/pre-compact.js" }] }
     ]
   }
 }

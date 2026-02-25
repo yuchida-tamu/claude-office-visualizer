@@ -59,15 +59,32 @@ describe('plugin.json manifest', () => {
     }
   });
 
+  test('all hook entries use the nested { hooks: [...] } format', () => {
+    const raw = readFileSync(PLUGIN_JSON_PATH, 'utf-8');
+    manifest = JSON.parse(raw);
+    const hooks = manifest.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string }> }>>;
+
+    for (const hookName of EXPECTED_HOOKS) {
+      const groups = hooks[hookName];
+      for (const group of groups) {
+        expect(group.hooks).toBeDefined();
+        expect(Array.isArray(group.hooks)).toBe(true);
+        expect(group.hooks.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
   test('all hook commands use ${CLAUDE_PLUGIN_ROOT}', () => {
     const raw = readFileSync(PLUGIN_JSON_PATH, 'utf-8');
     manifest = JSON.parse(raw);
-    const hooks = manifest.hooks as Record<string, Array<{ type: string; command: string }>>;
+    const hooks = manifest.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string }> }>>;
 
     for (const hookName of EXPECTED_HOOKS) {
-      const entries = hooks[hookName];
-      for (const entry of entries) {
-        expect(entry.command).toContain('${CLAUDE_PLUGIN_ROOT}');
+      const groups = hooks[hookName];
+      for (const group of groups) {
+        for (const entry of group.hooks) {
+          expect(entry.command).toContain('${CLAUDE_PLUGIN_ROOT}');
+        }
       }
     }
   });
@@ -75,13 +92,15 @@ describe('plugin.json manifest', () => {
   test('all hook commands reference hooks/dist/*.js (not .ts)', () => {
     const raw = readFileSync(PLUGIN_JSON_PATH, 'utf-8');
     manifest = JSON.parse(raw);
-    const hooks = manifest.hooks as Record<string, Array<{ type: string; command: string }>>;
+    const hooks = manifest.hooks as Record<string, Array<{ hooks: Array<{ type: string; command: string }> }>>;
 
     for (const hookName of EXPECTED_HOOKS) {
-      const entries = hooks[hookName];
-      for (const entry of entries) {
-        expect(entry.command).toMatch(/hooks\/dist\/[a-z-]+\.js$/);
-        expect(entry.command).not.toContain('.ts');
+      const groups = hooks[hookName];
+      for (const group of groups) {
+        for (const entry of group.hooks) {
+          expect(entry.command).toMatch(/hooks\/dist\/[a-z-]+\.js$/);
+          expect(entry.command).not.toContain('.ts');
+        }
       }
     }
   });

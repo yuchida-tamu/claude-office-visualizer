@@ -2,47 +2,36 @@
 
 Real-time 3D visualization of Claude Code agent orchestration. Watch your AI agents work in an interactive office scene powered by Three.js.
 
-## Installation
+## Quick Start
 
-### Via Marketplace (recommended)
-
-```bash
-# In Claude Code, add the marketplace and install:
-/plugin marketplace add yuchida-tamu/my-agent-skills
-/plugin install claude-office-visualizer@yuchida-agent-skills
-```
-
-### Via npm
+Two things are needed: the **server** (serves the 3D UI) and the **plugin** (hooks that send Claude Code events to the server).
 
 ```bash
-# Install globally
+# 1. Install the server + CLI
 npm install -g claude-office-visualizer
 
-# Or with bun
-bun install -g claude-office-visualizer
+# 2. Install the plugin hooks (in Claude Code)
+/plugin marketplace add yuchida-tamu/my-agent-skills
+/plugin install claude-office-visualizer@yuchida-agent-skills
+
+# 3. Start the visualizer server
+claude-visualizer start
+
+# 4. Open http://localhost:3333 in your browser
+
+# 5. Use Claude Code as normal — agents appear in the 3D scene in real-time
+
+# 6. Stop when done
+claude-visualizer stop
 ```
 
-### Via --plugin-dir (development)
+### Alternative: --plugin-dir (development)
+
+If you have the repo cloned locally, you can skip the marketplace and point Claude Code directly at it:
 
 ```bash
 claude --plugin-dir /path/to/claude-office-visualizer
 ```
-
-## Quick Start
-
-```bash
-# 1. Start the visualizer server
-claude-visualizer start
-
-# 2. Open http://localhost:3333 in your browser
-
-# 3. Use Claude Code as normal — agents appear in the 3D scene in real-time
-
-# 4. Stop when done
-claude-visualizer stop
-```
-
-The plugin registers 12 hooks that capture session start/end, sub-agent spawn/stop, tool calls, messages, notifications, and more.
 
 ## CLI Commands
 

@@ -28,6 +28,9 @@ switch (command) {
   case 'status':
     await import('./commands/status').then(m => m.status());
     break;
+  case 'clean':
+    await import('./commands/clean').then(m => m.clean(args.slice(1)));
+    break;
   case '--version':
   case '-v':
     console.log(`claude-visualizer ${getVersion()}`);
@@ -50,6 +53,7 @@ Usage:
   claude-visualizer start [options]   Start the visualizer server
   claude-visualizer stop              Stop the visualizer server
   claude-visualizer status            Show server status
+  claude-visualizer clean [--force]   Remove local data (db, pid file)
 
 Options (start):
   --port <number>   Server port (default: 3333, env: VISUALIZER_PORT)

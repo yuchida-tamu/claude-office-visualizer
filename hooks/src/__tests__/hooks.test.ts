@@ -250,6 +250,39 @@ describe('pre-tool-use hook', () => {
     expect(event.tool_use_id).toBeDefined();
     expect(typeof event.tool_use_id).toBe('string');
   });
+
+  test('truncates long string values in tool_input', async () => {
+    await runHook('pre-tool-use.ts', {
+      session_id: 'sess-123',
+      tool_name: 'Write',
+      tool_input: { content: 'A'.repeat(3000), file_path: '/tmp/test.ts' },
+      tool_use_id: 'tool-trunc',
+    });
+
+    const event = capturedCalls[0].body;
+    const input = event.tool_input as Record<string, unknown>;
+    expect(input.file_path).toBe('/tmp/test.ts');
+    expect((input.content as string).length).toBe(2048 + ' [truncated]'.length);
+    expect((input.content as string).endsWith(' [truncated]')).toBe(true);
+  });
+
+  test('replaces tool_input with stub when serialized size exceeds limit', async () => {
+    const largeInput: Record<string, unknown> = {};
+    for (let i = 0; i < 20; i++) {
+      largeInput[`field_${i}`] = 'X'.repeat(500);
+    }
+    await runHook('pre-tool-use.ts', {
+      session_id: 'sess-123',
+      tool_name: 'Write',
+      tool_input: largeInput,
+      tool_use_id: 'tool-big',
+    });
+
+    const event = capturedCalls[0].body;
+    const input = event.tool_input as Record<string, unknown>;
+    expect(input._truncated).toBe(true);
+    expect(Array.isArray(input._originalKeys)).toBe(true);
+  });
 });
 
 describe('post-tool-use hook', () => {
@@ -384,6 +417,45 @@ describe('post-tool-use hook', () => {
     expect(event.tool_response).toBeNull();
     expect(event.duration_ms).toBe(0);
     expect(event.tool_use_id).toBe('');
+  });
+
+  test('truncates long tool_response', async () => {
+    const longResponse = 'R'.repeat(3000);
+    await runHook('post-tool-use.ts', {
+      session_id: 'sess-123',
+      tool_name: 'Bash',
+      tool_response: longResponse,
+      tool_use_id: 'tool-long',
+    });
+
+    const event = capturedCalls[0].body;
+    const response = event.tool_response as string;
+    expect(response.length).toBe(2048 + ' [truncated]'.length);
+    expect(response.endsWith(' [truncated]')).toBe(true);
+  });
+
+  test('does not truncate short tool_response', async () => {
+    await runHook('post-tool-use.ts', {
+      session_id: 'sess-123',
+      tool_name: 'Bash',
+      tool_response: 'short output',
+      tool_use_id: 'tool-short',
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.tool_response).toBe('short output');
+  });
+
+  test('preserves null tool_response', async () => {
+    await runHook('post-tool-use.ts', {
+      session_id: 'sess-123',
+      tool_name: 'Bash',
+      tool_response: null,
+      tool_use_id: 'tool-null',
+    });
+
+    const event = capturedCalls[0].body;
+    expect(event.tool_response).toBeNull();
   });
 });
 

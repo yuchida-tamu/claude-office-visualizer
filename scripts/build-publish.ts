@@ -138,12 +138,16 @@ cpSync(pluginSrc, pluginDest, { recursive: true });
 
 // Generate a standalone package.json for the distribution
 const distPackageJson = {
-  name: 'claude-visualizer',
+  name: 'claude-office-visualizer',
   version: VERSION,
   type: 'module',
   description: 'Real-time 3D visualization of Claude Code agent orchestration',
   author: 'Yuta Uchida',
   license: 'MIT',
+  repository: {
+    type: 'git',
+    url: 'https://github.com/yuchida-tamu/claude-office-visualizer.git',
+  },
   keywords: [
     'claude',
     'claude-code',

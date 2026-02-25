@@ -7,9 +7,7 @@
     "claude-visualizer": "dist/cli.js"
   },
   "files": [
-    "dist/",
-    "hooks/dist/",
-    ".claude-plugin/"
+    "dist/"
   ],
   "workspaces": [
     "shared",

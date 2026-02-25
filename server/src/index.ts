@@ -17,6 +17,7 @@ const wsHandler = createWebSocketHandler(db);
 
 const server = Bun.serve({
   port: PORT,
+  maxRequestBodySize: 1_048_576, // 1MB — prevents memory exhaustion from oversized POST bodies
   fetch(req, server) {
     // Upgrade WebSocket requests
     if (new URL(req.url).pathname === '/ws') {

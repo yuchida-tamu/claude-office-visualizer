@@ -4,6 +4,7 @@
  */
 import type { ToolCallStartedEvent } from '@shared/events';
 import { resolveServerUrl } from './url';
+import { truncateToolInput } from './truncate';
 
 const SERVER_URL = resolveServerUrl();
 
@@ -18,7 +19,7 @@ async function main() {
       timestamp: new Date().toISOString(),
       session_id: data.session_id || 'unknown',
       tool_name: data.tool_name || 'unknown',
-      tool_input: data.tool_input || {},
+      tool_input: truncateToolInput(data.tool_input || {}),
       tool_use_id: data.tool_use_id || crypto.randomUUID(),
     };
 

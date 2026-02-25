@@ -5,6 +5,7 @@
  */
 import type { ToolCallCompletedEvent, MessageSentEvent } from '@shared/events';
 import { resolveServerUrl } from './url';
+import { truncateString } from './truncate';
 
 const SERVER_URL = resolveServerUrl();
 
@@ -13,13 +14,18 @@ async function main() {
     const input = await Bun.stdin.text();
     const data = JSON.parse(input);
 
+    const rawResponse = data.tool_response ?? null;
+    const truncatedResponse = typeof rawResponse === 'string'
+      ? truncateString(rawResponse)
+      : rawResponse;
+
     const event: ToolCallCompletedEvent = {
       id: crypto.randomUUID(),
       type: 'ToolCallCompleted',
       timestamp: new Date().toISOString(),
       session_id: data.session_id || 'unknown',
       tool_name: data.tool_name || 'unknown',
-      tool_response: data.tool_response ?? null,
+      tool_response: truncatedResponse,
       duration_ms: data.duration_ms || 0,
       tool_use_id: data.tool_use_id || '',
     };

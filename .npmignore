@@ -1,0 +1,49 @@
+# Source code (publish only built dist/)
+client/
+server/
+hooks/src/
+cli/
+shared/
+scripts/
+
+# Tests
+**/__tests__/
+**/*.test.ts
+**/*.spec.ts
+
+# TypeScript source
+**/*.ts
+!**/*.d.ts
+tsconfig*.json
+
+# Dev config
+.claude/
+.claude-plugin/
+.memory/
+.github/
+.vscode/
+.git/
+
+# Build artifacts that shouldn't ship
+*.tsbuildinfo
+*.tgz
+
+# Data and logs
+*.db
+*.db-wal
+*.db-shm
+*.log
+logs/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+
+# Node
+node_modules/

@@ -109,6 +109,19 @@ Agents progress through: `spawning` → `active` → `thinking` (inferred after 
 - **`agent_id` format**: Sub-agent IDs are short hashes (e.g., `a8efeee`), while session IDs are full UUIDs. These never collide.
 - **`SubagentStart` hook may not fire**: In some scenarios (e.g., Agent Team), `SubagentStop` fires but `SubagentStart` does not. The store handles this by auto-creating the agent on `AgentCompleted` if it doesn't exist, using `session_id` as the parent. This makes the visualizer resilient to missed spawn events.
 
+## Publishing to npm
+
+Before publishing a new version to the npm registry, you **must** conduct a thorough security audit. Assemble an agent team covering at minimum these areas:
+
+1. **Package contents & secrets** — Scan all files in the tarball (`npm pack --dry-run`) for leaked secrets, credentials, `.env` files, API keys, private keys, and internal paths. Verify `.npmignore` and `files` field exclude source, tests, and dev artifacts.
+2. **Server-side vulnerabilities** — Review HTTP routes, validation, database queries, WebSocket handlers for injection (SQL, command, header), path traversal, body size limits, and CORS policy.
+3. **Hook scripts security** — Verify environment variable validation (loopback-only URLs, port range), payload truncation, and that hooks never leak sensitive data or crash Claude Code.
+4. **Client-side XSS/injection** — Check for unsafe `innerHTML`, `dangerouslySetInnerHTML`, unescaped user input in 3D scene text, and prototype pollution in state management.
+5. **CLI & privilege escalation** — Review file system operations, subprocess spawning, PID file handling, and path construction for injection or symlink attacks.
+6. **Dependencies & license compliance** — Audit dependency tree for known CVEs (`npm audit`), check license compatibility, and verify no unnecessary runtime dependencies are bundled.
+
+All Critical and High findings must be resolved before publishing. Document the audit results and share with the user for review. Publish with `npm publish dist/` (the self-contained distribution directory), never from the monorepo root.
+
 ## Project management
 
 Tasks and issues are tracked in the **Linear** project "Claude Code Visualizer" under the **Yuchida4dev** team. Use the Linear MCP tools to read issues, create new ones, and update status. The PRD and feature breakdown are stored as a Linear document attached to the project.

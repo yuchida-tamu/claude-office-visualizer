@@ -55,8 +55,12 @@ function makeToolCallStartedEvent(overrides: Partial<Record<string, unknown>> = 
   };
 }
 
-function req(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
+function req(path: string, init?: RequestInit, origin?: string): Request {
+  const headers = new Headers(init?.headers || {});
+  if (origin) {
+    headers.set('Origin', origin);
+  }
+  return new Request(`http://localhost${path}`, { ...init, headers });
 }
 
 async function postEvent(db: Database, ws: WebSocketHandler, body: unknown): Promise<Response> {
@@ -96,7 +100,18 @@ describe('routes', () => {
       expect(res.status).toBe(204);
     });
 
-    test('includes CORS headers', async () => {
+    test('includes CORS headers for localhost origin', async () => {
+      const res = await handleRequest(
+        req('/api/events', { method: 'OPTIONS' }, 'http://localhost:5173'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+      expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
+      expect(res.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
+    });
+
+    test('includes CORS headers when no Origin header (non-browser request)', async () => {
       const res = await handleRequest(req('/api/events', { method: 'OPTIONS' }), db, ws);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
       expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
@@ -443,25 +458,25 @@ describe('routes', () => {
   // CORS headers on all responses
   // -----------------------------------------------------------------------
   describe('CORS headers on all responses', () => {
-    test('200 response has CORS headers', async () => {
+    test('200 response has CORS headers (no Origin = non-browser)', async () => {
       const res = await handleRequest(req('/api/health'), db, ws);
       expect(res.status).toBe(200);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
 
-    test('201 response has CORS headers', async () => {
+    test('201 response has CORS headers (no Origin = non-browser)', async () => {
       const res = await postEvent(db, ws, makeSessionStartedEvent());
       expect(res.status).toBe(201);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
 
-    test('400 response has CORS headers', async () => {
+    test('400 response has CORS headers (no Origin = non-browser)', async () => {
       const res = await postEvent(db, ws, { type: 'SessionStarted' });
       expect(res.status).toBe(400);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
 
-    test('404 response has CORS headers', async () => {
+    test('404 response has CORS headers (no Origin = non-browser)', async () => {
       const res = await handleRequest(req('/api/unknown'), db, ws);
       expect(res.status).toBe(404);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
@@ -469,7 +484,7 @@ describe('routes', () => {
       expect(res.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
     });
 
-    test('500 response has CORS headers', async () => {
+    test('500 response has CORS headers (no Origin = non-browser)', async () => {
       const res = await handleRequest(
         req('/api/events', {
           method: 'POST',
@@ -480,6 +495,105 @@ describe('routes', () => {
       );
       expect(res.status).toBe(500);
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // CORS origin validation
+  // -----------------------------------------------------------------------
+  describe('CORS origin validation', () => {
+    test('allows http://localhost:5173', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'http://localhost:5173'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    test('allows http://localhost:3333', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'http://localhost:3333'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3333');
+    });
+
+    test('allows http://127.0.0.1:5173', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'http://127.0.0.1:5173'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://127.0.0.1:5173');
+    });
+
+    test('allows http://[::1]:5173', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'http://[::1]:5173'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://[::1]:5173');
+    });
+
+    test('allows http://localhost (no port)', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'http://localhost'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost');
+    });
+
+    test('blocks foreign origins', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'https://evil.com'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+
+    test('blocks https://attacker.localhost', async () => {
+      const res = await handleRequest(
+        req('/api/health', undefined, 'https://attacker.localhost'),
+        db,
+        ws,
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+
+    test('allows requests with no Origin header (non-browser clients)', async () => {
+      const res = await handleRequest(req('/api/health'), db, ws);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    });
+
+    test('CORS validation applies to POST responses too', async () => {
+      const event = makeSessionStartedEvent();
+      const request = req(
+        '/api/events',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(event),
+        },
+        'http://localhost:5173',
+      );
+      const res = await handleRequest(request, db, ws);
+      expect(res.status).toBe(201);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    test('CORS validation applies to error responses from blocked origins', async () => {
+      const res = await handleRequest(
+        req('/api/unknown', undefined, 'https://evil.com'),
+        db,
+        ws,
+      );
+      expect(res.status).toBe(404);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
     });
   });
 });

@@ -407,6 +407,84 @@ describe('validateEvent', () => {
     });
   });
 
+  // ---- String length limits ----
+  describe('string length limits', () => {
+    test('rejects when id exceeds 256 characters', () => {
+      const body = makeEvent('SessionStarted', { id: 'x'.repeat(257) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('"id" exceeds maximum length of 256 characters');
+      expect(event).toBeNull();
+    });
+
+    test('accepts id at exactly 256 characters', () => {
+      const body = makeEvent('SessionStarted', { id: 'x'.repeat(256) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(true);
+      expect(event).not.toBeNull();
+    });
+
+    test('rejects when timestamp exceeds 64 characters', () => {
+      const body = makeEvent('SessionStarted', { timestamp: 'x'.repeat(65) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('"timestamp" exceeds maximum length of 64 characters');
+      expect(event).toBeNull();
+    });
+
+    test('accepts timestamp at exactly 64 characters', () => {
+      const body = makeEvent('SessionStarted', { timestamp: 'x'.repeat(64) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(true);
+      expect(event).not.toBeNull();
+    });
+
+    test('rejects when session_id exceeds 256 characters', () => {
+      const body = makeEvent('SessionStarted', { session_id: 'x'.repeat(257) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('"session_id" exceeds maximum length of 256 characters');
+      expect(event).toBeNull();
+    });
+
+    test('accepts session_id at exactly 256 characters', () => {
+      const body = makeEvent('SessionStarted', { session_id: 'x'.repeat(256) });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(true);
+      expect(event).not.toBeNull();
+    });
+  });
+
+  // ---- Payload size limit ----
+  describe('payload size limit', () => {
+    test('rejects when overall payload exceeds 64KB', () => {
+      // Create a payload with a very large extra field to push it over 64KB
+      const body = makeEvent('SessionStarted', {
+        big_field: 'x'.repeat(65_536),
+      });
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Event payload exceeds maximum size');
+      expect(event).toBeNull();
+    });
+
+    test('accepts payload at exactly 64KB', () => {
+      // Build a payload and pad it to exactly 64KB
+      const base = makeEvent('SessionStarted');
+      const baseSize = JSON.stringify(base).length;
+      // We need total to be exactly 65536.
+      // Adding a field: {"pad":"..."} adds ~9 chars of overhead for key+quotes+colon+comma
+      const paddingOverhead = JSON.stringify({ ...base, pad: '' }).length - baseSize;
+      const padLength = 65_536 - baseSize - paddingOverhead;
+      const body = { ...base, pad: 'x'.repeat(padLength) };
+      expect(JSON.stringify(body).length).toBe(65_536);
+
+      const { event, result } = validateEvent(body);
+      expect(result.valid).toBe(true);
+      expect(event).not.toBeNull();
+    });
+  });
+
   // ---- Validation order ----
   describe('validation order', () => {
     test('checks id before type', () => {
